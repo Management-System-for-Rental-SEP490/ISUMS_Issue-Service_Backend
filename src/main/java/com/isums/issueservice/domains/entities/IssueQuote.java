@@ -27,7 +27,7 @@ public class IssueQuote {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ticket_id")
-    private IssueTicket ticket;
+    private IssueTicket issueTicket;
 
     private UUID staffId;
 

@@ -16,7 +16,7 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class IssueQuoteItem {
+public class QuoteItem {
 
     @Id
     @UuidGenerator
