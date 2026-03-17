@@ -59,17 +59,35 @@ public class IssueTicketServiceImpl implements IssueTicketService {
 
     @Override
     public List<IssueTicketDto> getTenantIssues(UUID tenantId) {
-        return List.of();
+        try{
+            List<IssueTicket> tickets = issueTicketRepository.findByTenantIdOrderByCreatedAtDesc(tenantId);
+            return issueMapper.toDtos(tickets);
+        } catch (Exception ex) {
+            throw new RuntimeException("Can't get ticket by tenantId " + ex.getMessage());
+        }
     }
 
     @Override
     public IssueTicketDto getIssueById(UUID id) {
-        return null;
+       try{
+           IssueTicket ticket = issueTicketRepository.findById(id)
+                   .orElseThrow(() -> new RuntimeException("Ticket not found"));
+
+           return issueMapper.toDto(ticket);
+
+       } catch (Exception ex) {
+           throw new RuntimeException("Can't get ticket by id" + ex.getMessage());
+       }
     }
 
     @Override
     public List<IssueTicketDto> getAll() {
-        return List.of();
+        try{
+            List<IssueTicket> tickets = issueTicketRepository.findAll();
+            return issueMapper.toDtos(tickets);
+        } catch (Exception ex) {
+            throw new RuntimeException("Can't get all ticket" + ex.getMessage());
+        }
     }
 
     @Override
