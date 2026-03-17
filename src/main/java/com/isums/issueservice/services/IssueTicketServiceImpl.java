@@ -5,10 +5,12 @@ import com.isums.issueservice.domains.dtos.IssueTicketDto;
 import com.isums.issueservice.domains.entities.IssueHistory;
 import com.isums.issueservice.domains.entities.IssueTicket;
 import com.isums.issueservice.domains.enums.IssueStatus;
+import com.isums.issueservice.domains.events.JobEvent;
 import com.isums.issueservice.infrastructures.abstracts.IssueTicketService;
 import com.isums.issueservice.infrastructures.mappers.IssueMapper;
 import com.isums.issueservice.infrastructures.repositories.IssueHistoryRepository;
 import com.isums.issueservice.infrastructures.repositories.IssueTicketRepository;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +24,7 @@ public class IssueTicketServiceImpl implements IssueTicketService {
     private final IssueTicketRepository issueTicketRepository;
     private final IssueHistoryRepository issueHistoryRepository;
     private final IssueMapper issueMapper;
+    @Transactional
     @Override
     public IssueTicketDto createIssue(UUID tenantId, CreateIssueRequest request) {
         try{
@@ -67,5 +70,35 @@ public class IssueTicketServiceImpl implements IssueTicketService {
     @Override
     public List<IssueTicketDto> getAll() {
         return List.of();
+    }
+
+    @Override
+    public void markScheduled(JobEvent event) {
+        IssueTicket ticket = issueTicketRepository.findById(event.getReferenceId())
+                .orElseThrow();
+
+        if(ticket.getStatus() == IssueStatus.SCHEDULED){
+            return;
+        }
+
+        ticket.setAssignedStaffId(event.getStaffId());
+        ticket.setSlotId(event.getSlotId());
+        ticket.setStatus(IssueStatus.SCHEDULED);
+
+        issueTicketRepository.save(ticket);
+
+        saveHistory(ticket, event);
+    }
+
+    private void saveHistory(IssueTicket ticket, JobEvent event) {
+
+        IssueHistory history = new IssueHistory();
+
+        history.setIssueTicket(ticket);
+        history.setActorId(event.getStaffId());
+        history.setAction(event.getAction().name());
+        history.setCreatedAt(Instant.now());
+
+        issueHistoryRepository.save(history);
     }
 }
