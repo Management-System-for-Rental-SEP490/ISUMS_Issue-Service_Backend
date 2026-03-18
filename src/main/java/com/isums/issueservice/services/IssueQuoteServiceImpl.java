@@ -14,6 +14,7 @@ import com.isums.issueservice.infrastructures.mappers.IssueMapper;
 import com.isums.issueservice.infrastructures.repositories.IssueHistoryRepository;
 import com.isums.issueservice.infrastructures.repositories.IssueQuoteRepository;
 import com.isums.issueservice.infrastructures.repositories.IssueTicketRepository;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -73,7 +74,7 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
 
             saveHistory(ticket, staffId, "QUOTE_CREATED");
 
-            return issueMapper.quote(quote);
+            return issueMapper.quote(created);
         } catch (Exception ex) {
             throw new RuntimeException("Can't create quote " + ex.getMessage());
         }
@@ -115,6 +116,7 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
         }
     }
 
+    @Transactional
     @Override
     public IssueQuoteDto updateQuoteStatus(UUID quoteId, UUID actorId, QuoteStatus newStatus) {
         try{
@@ -125,55 +127,54 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
             QuoteStatus status = quote.getStatus();
 
             //if( = manager)
-            if(status != QuoteStatus.WAITING_MANAGER_APPROVAL){
-                throw new RuntimeException("Invalid state for manager");
+            if(status == QuoteStatus.WAITING_MANAGER_APPROVAL) {
+
+                if (newStatus == QuoteStatus.APPROVED) {
+                    // hu hai do hao mon tu nhien
+                    if (!Boolean.TRUE.equals(quote.getIsTenantFault())) {
+                        quote.setStatus(QuoteStatus.APPROVED);
+                        ticket.setStatus(IssueStatus.DONE);
+
+                        saveHistory(ticket, actorId, "MANAGER_APPROVED_FREE");
+                    } else {
+                        // do nguoi thue lam hu
+                        quote.setStatus(QuoteStatus.WAITING_TENANT_APPROVAL);
+                        ticket.setStatus(IssueStatus.WAITING_TENANT_APPROVAL);
+
+                        saveHistory(ticket, actorId, "MANAGER_APPROVED_QUOTE");
+                    }
+                } else if (newStatus == QuoteStatus.REJECTED) {
+                    quote.setStatus(QuoteStatus.REJECTED);
+                    ticket.setStatus(IssueStatus.IN_PROGRESS);
+
+                    saveHistory(ticket, actorId, "MANAGER_REJECTED_QUOTE");
+                } else {
+                    throw new RuntimeException("Invalid action");
+                }
             }
+            //role = tenant
+            else if(status == QuoteStatus.WAITING_TENANT_APPROVAL) {
 
-            if(newStatus == QuoteStatus.APPROVED){
-                // hu hai do hao mon tu nhien
-                if(!Boolean.TRUE.equals(quote.getIsTenantFault())){
+                if (newStatus == QuoteStatus.APPROVED) {
+
                     quote.setStatus(QuoteStatus.APPROVED);
-                    ticket.setStatus(IssueStatus.DONE);
+                    ticket.setStatus(IssueStatus.WAITING_PAYMENT);
 
-                    saveHistory(ticket,actorId,"MANAGER_APPROVED_FREE");
+                    saveHistory(ticket, actorId, "TENANT_APPROVED_QUOTE");
+
+                } else if (newStatus == QuoteStatus.REJECTED) {
+
+                    quote.setStatus(QuoteStatus.REJECTED);
+                    ticket.setStatus(IssueStatus.IN_PROGRESS);
+
+                    saveHistory(ticket, actorId, "TENANT_REJECTED_QUOTE");
+
+                } else {
+                    throw new RuntimeException("Invalid action");
                 }
-                else{
-                    // do nguoi thue lam hu
-                    quote.setStatus(QuoteStatus.WAITING_TENANT_APPROVAL);
-                    ticket.setStatus(IssueStatus.WAITING_TENANT_APPROVAL);
-
-                    saveHistory(ticket, actorId, "MANAGER_APPROVED_QUOTE");
-                }
-            } else if (newStatus == QuoteStatus.REJECTED) {
-                quote.setStatus(QuoteStatus.REJECTED);
-                ticket.setStatus(IssueStatus.IN_PROGRESS);
-
-                saveHistory(ticket, actorId, "MANAGER_REJECTED_QUOTE");
             }
             else {
-                throw new RuntimeException("Invalid action");
-            }
-
-            //role = tenant
-            if(status != QuoteStatus.WAITING_TENANT_APPROVAL){
-                throw new RuntimeException("Invalid state for tenant");
-            }
-            if (newStatus == QuoteStatus.APPROVED) {
-
-                quote.setStatus(QuoteStatus.APPROVED);
-                ticket.setStatus(IssueStatus.WAITING_PAYMENT);
-
-                saveHistory(ticket, actorId, "TENANT_APPROVED_QUOTE");
-
-            } else if (newStatus == QuoteStatus.REJECTED) {
-
-                quote.setStatus(QuoteStatus.REJECTED);
-                ticket.setStatus(IssueStatus.IN_PROGRESS);
-
-                saveHistory(ticket, actorId, "TENANT_REJECTED_QUOTE");
-
-            } else {
-                throw new RuntimeException("Invalid action");
+                throw new RuntimeException("Invalid state");
             }
 
             quote.setUpdatedAt(Instant.now());

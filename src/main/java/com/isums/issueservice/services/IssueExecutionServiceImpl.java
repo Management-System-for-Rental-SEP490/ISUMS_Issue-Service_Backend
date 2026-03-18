@@ -4,6 +4,7 @@ import com.isums.issueservice.domains.dtos.CreateExecutionRequest;
 import com.isums.issueservice.domains.dtos.IssueExecutionDto;
 import com.isums.issueservice.domains.entities.IssueExecution;
 import com.isums.issueservice.domains.entities.IssueHistory;
+import com.isums.issueservice.domains.entities.IssueQuote;
 import com.isums.issueservice.domains.entities.IssueTicket;
 import com.isums.issueservice.domains.enums.IssueStatus;
 import com.isums.issueservice.domains.events.AssetConditionEvent;
@@ -18,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -35,7 +37,7 @@ public class IssueExecutionServiceImpl implements IssueExecutionService {
             IssueTicket ticket = issueTicketRepository.findById(issueId)
                     .orElseThrow(() -> new RuntimeException("ticket not found"));
 
-            if(ticket.getStatus() != IssueStatus.SCHEDULED){
+            if(ticket.getStatus() != IssueStatus.IN_PROGRESS){
                 throw new RuntimeException("Ticket must be in status IN_PROGRESS");
             }
 
@@ -65,6 +67,43 @@ public class IssueExecutionServiceImpl implements IssueExecutionService {
             throw new RuntimeException("Can't create execution " + ex.getMessage());
         }
     }
+
+    @Override
+    public List<IssueExecutionDto> getAll() {
+        try{
+            List<IssueExecution> exes = issueExecutionRepository.findAll();
+            return issueMapper.exes(exes);
+
+        }catch (Exception ex) {
+            throw new RuntimeException("Can't get all executions " + ex.getMessage());
+        }
+    }
+
+    @Override
+    public IssueExecutionDto getById(UUID id) {
+        try{
+            IssueExecution exe = issueExecutionRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Quote not found"));
+
+            return issueMapper.exe(exe);
+
+        }catch (Exception ex) {
+            throw new RuntimeException("Can't update status quote " + ex.getMessage());
+        }
+    }
+
+    @Override
+    public List<IssueExecutionDto> getByTicketId(UUID ticketId) {
+        try{
+            List<IssueExecution> exes = issueExecutionRepository.findByIssueIdOrderByCreatedAtAsc(ticketId);
+
+            return issueMapper.exes(exes);
+
+        }catch (Exception ex) {
+            throw new RuntimeException("Can't update status quote " + ex.getMessage());
+        }
+    }
+
 
     private void saveHistory(IssueTicket ticket, UUID actorId, String action){
 

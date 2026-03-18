@@ -46,11 +46,11 @@ public class IssueQuoteController {
         return ApiResponses.ok(res, "Get quotes by ticket successfully");
     }
 
-    @PutMapping("/quotes/{id}/status")
+    @PutMapping("/{id}/status")
     public ApiResponse<IssueQuoteDto> updateQuoteStatus(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id, @RequestBody UpdateQuoteStatusRequest req) {
         UUID userId = UUID.fromString(jwt.getSubject());
 
         IssueQuoteDto res = issueQuoteService.updateQuoteStatus(id, userId, req.status());
-        return ApiResponses.ok(null, "Updated quote status");
+        return ApiResponses.ok(res, "Updated quote status");
     }
 }

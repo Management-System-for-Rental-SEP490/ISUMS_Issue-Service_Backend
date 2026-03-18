@@ -20,6 +20,21 @@ public class JobEventListeners {
         } catch (Exception e) {
             System.err.println("Kafka error: " + e.getMessage());
         }
+    }
 
+    @KafkaListener(topics = "job.rescheduled", groupId = "issue-group")
+    public void handleJobRescheduled(JobEvent event){
+        if (!"ISSUE".equals(event.getReferenceType())) {
+            return;
+        }
+        issueTicketService.markRescheduled(event);
+    }
+
+    @KafkaListener(topics = "job.need-reschedule", groupId = "issue-group")
+    public void handleNeedReschedule(JobEvent event){
+        if (!"ISSUE".equals(event.getReferenceType())) {
+            return;
+        }
+        issueTicketService.markNeedReschedule(event);
     }
 }

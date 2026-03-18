@@ -15,4 +15,6 @@ public interface IssueTicketService {
     List<IssueTicketDto> getAll();
     IssueTicketDto updateStatus(UUID id , IssueStatus newStatus);
     void markScheduled(JobEvent event);
+    void markRescheduled(JobEvent event);
+    void markNeedReschedule(JobEvent event);
 }

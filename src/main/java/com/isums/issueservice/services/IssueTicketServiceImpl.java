@@ -96,18 +96,15 @@ public class IssueTicketServiceImpl implements IssueTicketService {
             IssueTicket ticket = issueTicketRepository.findById(id)
                     .orElseThrow(() -> new RuntimeException("Ticket not found"));
 
-            IssueStatus cur = ticket.getStatus();
+            IssueStatus current = ticket.getStatus();
 
-            if(cur == IssueStatus.SCHEDULED && newStatus == IssueStatus.IN_PROGRESS){
-                ticket.setStatus(IssueStatus.IN_PROGRESS);
-            } else if (cur == IssueStatus.IN_PROGRESS && newStatus == IssueStatus.DONE) {
-                ticket.setStatus(IssueStatus.DONE);
-            } else {
-                throw new RuntimeException("Invalid status transition");
-            }
+            validateTransition(current, newStatus);
+
+            ticket.setStatus(newStatus);
 
             IssueTicket saved = issueTicketRepository.save(ticket);
-            saveHistory(saved, null, "STATUS_IN_PROGRESS");
+
+            saveHistory(saved, "STATUS_" + newStatus.name());
 
             return issueMapper.toDto(saved);
 
@@ -131,18 +128,95 @@ public class IssueTicketServiceImpl implements IssueTicketService {
 
         issueTicketRepository.save(ticket);
 
-        saveHistory(ticket, event.getStaffId(),"JOB_SCHEDULED");
+        saveHistory(ticket,"JOB_SCHEDULED");
     }
 
-    private void saveHistory(IssueTicket ticket, UUID actorId, String action){
+    @Override
+    public void markRescheduled(JobEvent event) {
+        IssueTicket ticket = issueTicketRepository.findById(event.getReferenceId())
+                .orElseThrow(() -> new RuntimeException("Ticket not found"));
+
+        ticket.setStatus(IssueStatus.SCHEDULED);
+        ticket.setAssignedStaffId(event.getStaffId());
+        ticket.setSlotId(event.getSlotId());
+
+        IssueTicket saved = issueTicketRepository.save(ticket);
+
+        saveHistory(saved, "RESCHEDULE");
+    }
+
+    @Override
+    public void markNeedReschedule(JobEvent event) {
+        IssueTicket ticket = issueTicketRepository.findById(event.getReferenceId())
+                .orElseThrow(() -> new RuntimeException("Ticket not found"));
+
+        ticket.setStatus(IssueStatus.NEED_RESCHEDULE);
+
+        IssueTicket saved = issueTicketRepository.save(ticket);
+
+        saveHistory(saved, "NEED_RESCHEDULE");
+    }
+
+    private void saveHistory(IssueTicket ticket, String action){
 
         IssueHistory history = new IssueHistory();
 
         history.setIssueTicket(ticket);
-        history.setActorId(actorId);
+        history.setActorId(ticket.getAssignedStaffId());
         history.setAction(action);
         history.setCreatedAt(Instant.now());
 
         issueHistoryRepository.save(history);
+    }
+
+    private void validateTransition(IssueStatus current, IssueStatus next){
+        switch (current) {
+
+            case SCHEDULED:
+                if (next != IssueStatus.IN_PROGRESS &&
+                        next != IssueStatus.NEED_RESCHEDULE) {
+                    throw new RuntimeException("Invalid transition");
+                }
+                break;
+
+            case NEED_RESCHEDULE:
+                if (next != IssueStatus.SCHEDULED) {
+                    throw new RuntimeException("Invalid transition");
+                }
+                break;
+
+            case IN_PROGRESS:
+                if (next != IssueStatus.WAITING_MANAGER_APPROVAL
+                    && next != IssueStatus.DONE     // kieu sua 1 cai la het
+                    && next != IssueStatus.CANCELLED) { // tenant k co o nha
+                    throw new RuntimeException("Invalid transition");
+                }
+                break;
+
+            case WAITING_MANAGER_APPROVAL:
+                if (next != IssueStatus.WAITING_TENANT_APPROVAL &&
+                        next != IssueStatus.IN_PROGRESS
+                        && next != IssueStatus.CANCELLED) { // reject
+                    throw new RuntimeException("Invalid transition");
+                }
+                break;
+
+            case WAITING_TENANT_APPROVAL:
+                if (next != IssueStatus.WAITING_PAYMENT &&
+                        next != IssueStatus.DONE
+                        && next != IssueStatus.CANCELLED) {
+                    throw new RuntimeException("Invalid transition");
+                }
+                break;
+
+            case WAITING_PAYMENT:
+                if (next != IssueStatus.DONE) {
+                    throw new RuntimeException("Invalid transition");
+                }
+                break;
+
+            default:
+                throw new RuntimeException("Invalid transition");
+        }
     }
 }

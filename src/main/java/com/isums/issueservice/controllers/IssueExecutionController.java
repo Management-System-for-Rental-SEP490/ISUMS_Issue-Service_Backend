@@ -1,9 +1,6 @@
 package com.isums.issueservice.controllers;
 
-import com.isums.issueservice.domains.dtos.ApiResponse;
-import com.isums.issueservice.domains.dtos.ApiResponses;
-import com.isums.issueservice.domains.dtos.CreateExecutionRequest;
-import com.isums.issueservice.domains.dtos.IssueExecutionDto;
+import com.isums.issueservice.domains.dtos.*;
 import com.isums.issueservice.domains.entities.IssueExecution;
 import com.isums.issueservice.infrastructures.abstracts.IssueExecutionService;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +8,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -28,5 +26,27 @@ public class IssueExecutionController {
         IssueExecutionDto res = issueExecutionService.createExecution(id, staffId, req);
 
         return ApiResponses.created(res, "Execution created successfully");
+    }
+
+    @GetMapping()
+    public ApiResponse<List<IssueExecutionDto>> getAll() {
+        List<IssueExecutionDto> res = issueExecutionService.getAll();
+        return ApiResponses.ok(res, "Get quotes successfully");
+    }
+
+    @GetMapping("/{id}")
+    public ApiResponse<IssueExecutionDto> getQuoteById(@PathVariable UUID id) {
+
+        IssueExecutionDto res = issueExecutionService.getById(id);
+
+        return ApiResponses.ok(res, "Get quote successfully");
+    }
+
+    @GetMapping("/ticket/{ticketId}")
+    public ApiResponse<List<IssueExecutionDto>> getByTicketId(@PathVariable UUID ticketId) {
+
+        List<IssueExecutionDto> res = issueExecutionService.getByTicketId(ticketId);
+
+        return ApiResponses.ok(res, "Get quotes by ticket successfully");
     }
 }
