@@ -91,6 +91,32 @@ public class IssueTicketServiceImpl implements IssueTicketService {
     }
 
     @Override
+    public IssueTicketDto updateStatus(UUID id, IssueStatus newStatus) {
+        try{
+            IssueTicket ticket = issueTicketRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Ticket not found"));
+
+            IssueStatus cur = ticket.getStatus();
+
+            if(cur == IssueStatus.SCHEDULED && newStatus == IssueStatus.IN_PROGRESS){
+                ticket.setStatus(IssueStatus.IN_PROGRESS);
+            } else if (cur == IssueStatus.IN_PROGRESS && newStatus == IssueStatus.DONE) {
+                ticket.setStatus(IssueStatus.DONE);
+            } else {
+                throw new RuntimeException("Invalid status transition");
+            }
+
+            IssueTicket saved = issueTicketRepository.save(ticket);
+            saveHistory(saved, null, "STATUS_IN_PROGRESS");
+
+            return issueMapper.toDto(saved);
+
+        }  catch (Exception ex) {
+            throw new RuntimeException("Can't update ticket status" + ex.getMessage());
+        }
+    }
+
+    @Override
     public void markScheduled(JobEvent event) {
         IssueTicket ticket = issueTicketRepository.findById(event.getReferenceId())
                 .orElseThrow();
@@ -105,16 +131,16 @@ public class IssueTicketServiceImpl implements IssueTicketService {
 
         issueTicketRepository.save(ticket);
 
-        saveHistory(ticket, event);
+        saveHistory(ticket, event.getStaffId(),"JOB_SCHEDULED");
     }
 
-    private void saveHistory(IssueTicket ticket, JobEvent event) {
+    private void saveHistory(IssueTicket ticket, UUID actorId, String action){
 
         IssueHistory history = new IssueHistory();
 
         history.setIssueTicket(ticket);
-        history.setActorId(event.getStaffId());
-        history.setAction(event.getAction().name());
+        history.setActorId(actorId);
+        history.setAction(action);
         history.setCreatedAt(Instant.now());
 
         issueHistoryRepository.save(history);

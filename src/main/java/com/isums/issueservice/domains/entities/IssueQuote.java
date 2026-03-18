@@ -10,6 +10,8 @@ import org.hibernate.annotations.UuidGenerator;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -33,8 +35,16 @@ public class IssueQuote {
 
     private BigDecimal totalPrice;
 
+    private Boolean isTenantFault;
+
     @Enumerated(EnumType.STRING)
     private QuoteStatus status;
 
     private Instant createdAt;
+
+    private Instant updatedAt;
+
+    @OneToMany(mappedBy = "quote", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<QuoteItem> items = new ArrayList<>();
 }

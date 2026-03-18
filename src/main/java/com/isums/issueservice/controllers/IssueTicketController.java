@@ -4,6 +4,7 @@ import com.isums.issueservice.domains.dtos.ApiResponse;
 import com.isums.issueservice.domains.dtos.ApiResponses;
 import com.isums.issueservice.domains.dtos.CreateIssueRequest;
 import com.isums.issueservice.domains.dtos.IssueTicketDto;
+import com.isums.issueservice.domains.enums.IssueStatus;
 import com.isums.issueservice.infrastructures.abstracts.IssueTicketService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -43,5 +44,12 @@ public class IssueTicketController {
     public ApiResponse<IssueTicketDto> getById(@PathVariable UUID ticketId){
         IssueTicketDto res = issueTicketService.getIssueById(ticketId);
         return ApiResponses.ok(res,"Get all tickets successfully");
+    }
+
+    @PutMapping("/{id}/status")
+    public ApiResponse<IssueTicketDto> updateStatus(@PathVariable UUID id, @RequestParam IssueStatus status
+    ) {
+        IssueTicketDto res = issueTicketService.updateStatus(id, status);
+        return ApiResponses.ok(res, "Update status success");
     }
 }

@@ -7,29 +7,34 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.UuidGenerator;
 
-import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Table(name = "quote_items")
+@Table(name = "issue_executions")
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class QuoteItem {
+public class IssueExecution {
 
     @Id
     @UuidGenerator
     @GeneratedValue
     private UUID id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "quote_id")
-    private IssueQuote quote;
+    private UUID issueId;
 
-    private String itemName;
+    private UUID houseId;
 
-    private String description;
+    private UUID assetId;
 
-    private BigDecimal price;
+    private UUID staffId;
+
+    private Integer conditionScore;
+
+    @Column(columnDefinition = "text")
+    private String notes;
+
+    private Instant createdAt;
 }
