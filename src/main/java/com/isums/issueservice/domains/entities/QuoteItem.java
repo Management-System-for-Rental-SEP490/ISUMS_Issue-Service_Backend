@@ -7,16 +7,16 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.UuidGenerator;
 
-import java.time.Instant;
+import java.math.BigDecimal;
 import java.util.UUID;
 
 @Entity
-@Table(name = "issue_images")
+@Table(name = "quote_items")
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class IssueImage {
+public class QuoteItem {
 
     @Id
     @UuidGenerator
@@ -24,9 +24,12 @@ public class IssueImage {
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "ticket_id")
-    private IssueTicket issueTicket;
-    private String imageUrl;
+    @JoinColumn(name = "quote_id")
+    private IssueQuote quote;
 
-    private Instant createdAt;
+    private String itemName;
+
+    private String description;
+
+    private BigDecimal price;
 }

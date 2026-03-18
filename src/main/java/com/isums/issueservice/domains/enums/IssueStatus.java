@@ -2,7 +2,7 @@ package com.isums.issueservice.domains.enums;
 
 public enum IssueStatus {
     CREATED,
-    ASSIGNED,
+    NEED_RESCHEDULE,
     SCHEDULED,
     IN_PROGRESS,
     WAITING_MANAGER_APPROVAL,
