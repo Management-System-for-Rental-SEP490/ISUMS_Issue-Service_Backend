@@ -8,12 +8,14 @@ import com.isums.issueservice.domains.entities.IssueTicket;
 import com.isums.issueservice.domains.entities.QuoteItem;
 import com.isums.issueservice.domains.enums.IssueStatus;
 import com.isums.issueservice.domains.enums.QuoteStatus;
+import com.isums.issueservice.infrastructures.Grpcs.UserClientsGrpc;
 import com.isums.issueservice.infrastructures.abstracts.IssueQuoteService;
 import com.isums.issueservice.infrastructures.abstracts.IssueTicketService;
 import com.isums.issueservice.infrastructures.mappers.IssueMapper;
 import com.isums.issueservice.infrastructures.repositories.IssueHistoryRepository;
 import com.isums.issueservice.infrastructures.repositories.IssueQuoteRepository;
 import com.isums.issueservice.infrastructures.repositories.IssueTicketRepository;
+import common.statics.Roles;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -30,6 +32,7 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
     private final IssueMapper issueMapper;
     private final IssueHistoryRepository issueHistoryRepository;
     private final IssueQuoteRepository issueQuoteRepository;
+    private final UserClientsGrpc userClientsGrpc;
     @Override
     public IssueQuoteDto createQuote(UUID issueId, UUID staffId, CreateQuoteRequest req) {
         try{
@@ -116,6 +119,7 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
         }
     }
 
+
     @Transactional
     @Override
     public IssueQuoteDto updateQuoteStatus(UUID quoteId, UUID actorId, QuoteStatus newStatus) {
@@ -126,58 +130,59 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
             IssueTicket ticket = quote.getIssueTicket();
             QuoteStatus status = quote.getStatus();
 
-            //if( = manager)
-            if(status == QuoteStatus.WAITING_MANAGER_APPROVAL) {
+            var userProfile = userClientsGrpc.getUserIdAndRoleByKeyCloakId(actorId.toString());
+            var role = userProfile.getRolesList();
+            if(role.contains(Roles.MANAGER)) {
+                if (status == QuoteStatus.WAITING_MANAGER_APPROVAL) {
 
-                if (newStatus == QuoteStatus.APPROVED) {
-                    // hu hai do hao mon tu nhien
-                    if (!Boolean.TRUE.equals(quote.getIsTenantFault())) {
-                        quote.setStatus(QuoteStatus.APPROVED);
-                        ticket.setStatus(IssueStatus.DONE);
+                    if (newStatus == QuoteStatus.APPROVED) {
+                        // hu hai do hao mon tu nhien
+                        if (!Boolean.TRUE.equals(quote.getIsTenantFault())) {
+                            quote.setStatus(QuoteStatus.APPROVED);
+                            ticket.setStatus(IssueStatus.DONE);
 
-                        saveHistory(ticket, actorId, "MANAGER_APPROVED_FREE");
+                            saveHistory(ticket, actorId, "MANAGER_APPROVED_FREE");
+                        } else {
+                            // do nguoi thue lam hu
+                            quote.setStatus(QuoteStatus.WAITING_TENANT_APPROVAL);
+                            ticket.setStatus(IssueStatus.WAITING_TENANT_APPROVAL);
+
+                            saveHistory(ticket, actorId, "MANAGER_APPROVED_QUOTE");
+                        }
+                    } else if (newStatus == QuoteStatus.REJECTED) {
+                        quote.setStatus(QuoteStatus.REJECTED);
+                        ticket.setStatus(IssueStatus.IN_PROGRESS);
+
+                        saveHistory(ticket, actorId, "MANAGER_REJECTED_QUOTE");
                     } else {
-                        // do nguoi thue lam hu
-                        quote.setStatus(QuoteStatus.WAITING_TENANT_APPROVAL);
-                        ticket.setStatus(IssueStatus.WAITING_TENANT_APPROVAL);
-
-                        saveHistory(ticket, actorId, "MANAGER_APPROVED_QUOTE");
+                        throw new RuntimeException("Invalid action");
                     }
-                } else if (newStatus == QuoteStatus.REJECTED) {
-                    quote.setStatus(QuoteStatus.REJECTED);
-                    ticket.setStatus(IssueStatus.IN_PROGRESS);
-
-                    saveHistory(ticket, actorId, "MANAGER_REJECTED_QUOTE");
-                } else {
-                    throw new RuntimeException("Invalid action");
                 }
             }
-            //role = tenant
-            else if(status == QuoteStatus.WAITING_TENANT_APPROVAL) {
+            else if(role.contains(Roles.TENANT)) {
+                if (status == QuoteStatus.WAITING_TENANT_APPROVAL) {
 
-                if (newStatus == QuoteStatus.APPROVED) {
+                    if (newStatus == QuoteStatus.APPROVED) {
 
-                    quote.setStatus(QuoteStatus.APPROVED);
-                    ticket.setStatus(IssueStatus.WAITING_PAYMENT);
+                        quote.setStatus(QuoteStatus.APPROVED);
+                        ticket.setStatus(IssueStatus.WAITING_PAYMENT);
 
-                    saveHistory(ticket, actorId, "TENANT_APPROVED_QUOTE");
+                        saveHistory(ticket, actorId, "TENANT_APPROVED_QUOTE");
 
-                } else if (newStatus == QuoteStatus.REJECTED) {
+                    } else if (newStatus == QuoteStatus.REJECTED) {
 
-                    quote.setStatus(QuoteStatus.REJECTED);
-                    ticket.setStatus(IssueStatus.IN_PROGRESS);
+                        quote.setStatus(QuoteStatus.REJECTED);
+                        ticket.setStatus(IssueStatus.CANCELLED);
 
-                    saveHistory(ticket, actorId, "TENANT_REJECTED_QUOTE");
+                        saveHistory(ticket, actorId, "TENANT_REJECTED_QUOTE");
 
+                    } else {
+                        throw new RuntimeException("Invalid action");
+                    }
                 } else {
-                    throw new RuntimeException("Invalid action");
+                    throw new RuntimeException("Invalid state");
                 }
             }
-            else {
-                throw new RuntimeException("Invalid state");
-            }
-
-            quote.setUpdatedAt(Instant.now());
 
             issueQuoteRepository.save(quote);
             issueTicketRepository.save(ticket);
