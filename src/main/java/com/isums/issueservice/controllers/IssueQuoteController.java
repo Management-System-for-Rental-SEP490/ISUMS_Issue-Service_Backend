@@ -1,7 +1,9 @@
 package com.isums.issueservice.controllers;
 
 import com.isums.issueservice.domains.dtos.*;
+import com.isums.issueservice.infrastructures.Grpcs.UserClientsGrpc;
 import com.isums.issueservice.infrastructures.abstracts.IssueQuoteService;
+import com.isums.userservice.grpc.UserResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -15,12 +17,12 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class IssueQuoteController {
     private final IssueQuoteService issueQuoteService;
+    private final UserClientsGrpc userClientsGrpc;
 
     @PostMapping("/{id}/quote")
     public ApiResponse<IssueQuoteDto> createQuote(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id, @RequestBody CreateQuoteRequest req) {
-        UUID staffId = UUID.fromString(jwt.getSubject());
-
-        IssueQuoteDto res = issueQuoteService.createQuote(id, staffId, req);
+        UserResponse user = userClientsGrpc.getUserIdAndRoleByKeyCloakId(jwt.getSubject());
+        IssueQuoteDto res = issueQuoteService.createQuote(id, user.getId(), req);
         return ApiResponses.created(res, "Quote created successfully");
     }
 
@@ -48,9 +50,8 @@ public class IssueQuoteController {
 
     @PutMapping("/{id}/status")
     public ApiResponse<IssueQuoteDto> updateQuoteStatus(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id, @RequestBody UpdateQuoteStatusRequest req) {
-        UUID userId = UUID.fromString(jwt.getSubject());
-
-        IssueQuoteDto res = issueQuoteService.updateQuoteStatus(id, userId, req.status());
+        UserResponse user = userClientsGrpc.getUserIdAndRoleByKeyCloakId(jwt.getSubject());
+        IssueQuoteDto res = issueQuoteService.updateQuoteStatus(id, user.getId(), req.status());
         return ApiResponses.ok(res, "Updated quote status");
     }
 }

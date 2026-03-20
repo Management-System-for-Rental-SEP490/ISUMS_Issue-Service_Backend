@@ -2,7 +2,9 @@ package com.isums.issueservice.controllers;
 
 import com.isums.issueservice.domains.dtos.*;
 import com.isums.issueservice.domains.entities.IssueExecution;
+import com.isums.issueservice.infrastructures.Grpcs.UserClientsGrpc;
 import com.isums.issueservice.infrastructures.abstracts.IssueExecutionService;
+import com.isums.userservice.grpc.UserResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -16,14 +18,12 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class IssueExecutionController {
     private final IssueExecutionService issueExecutionService;
-
+    private final UserClientsGrpc userClientsGrpc;
     @PostMapping("/{id}/execution")
     public ApiResponse<IssueExecutionDto> createExecution(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id, @RequestBody CreateExecutionRequest req
     ) {
-
-        UUID staffId = UUID.fromString(jwt.getSubject());
-
-        IssueExecutionDto res = issueExecutionService.createExecution(id, staffId, req);
+        UserResponse user = userClientsGrpc.getUserIdAndRoleByKeyCloakId(jwt.getSubject());
+        IssueExecutionDto res = issueExecutionService.createExecution(id, user.getId(), req);
 
         return ApiResponses.created(res, "Execution created successfully");
     }

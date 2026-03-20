@@ -9,9 +9,9 @@ import java.util.List;
 import java.util.UUID;
 
 public interface IssueQuoteService {
-    IssueQuoteDto createQuote(UUID issueId, UUID staffId, CreateQuoteRequest req);
+    IssueQuoteDto createQuote(UUID issueId, String staffId, CreateQuoteRequest req);
     List<IssueQuoteDto> getAll();
     IssueQuoteDto getById(UUID id);
     List<IssueQuoteDto> getByTicketId(UUID ticketId);
-    IssueQuoteDto updateQuoteStatus(UUID quoteId, UUID actorId, QuoteStatus newStatus);
+    IssueQuoteDto updateQuoteStatus(UUID quoteId, String actorId, QuoteStatus newStatus);
 }
