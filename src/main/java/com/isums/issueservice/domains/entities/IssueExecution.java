@@ -11,22 +11,30 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Table(name = "issue_images")
+@Table(name = "issue_executions")
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class IssueImage {
+public class IssueExecution {
 
     @Id
     @UuidGenerator
     @GeneratedValue
     private UUID id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "ticket_id")
-    private IssueTicket issueTicket;
-    private String imageUrl;
+    private UUID issueId;
+
+    private UUID houseId;
+
+    private UUID assetId;
+
+    private UUID staffId;
+
+    private Integer conditionScore;
+
+    @Column(columnDefinition = "text")
+    private String notes;
 
     private Instant createdAt;
 }
