@@ -4,7 +4,9 @@ import com.isums.issueservice.domains.dtos.AnswerRequest;
 import com.isums.issueservice.domains.dtos.ApiResponse;
 import com.isums.issueservice.domains.dtos.ApiResponses;
 import com.isums.issueservice.domains.dtos.IssueResponseDto;
+import com.isums.issueservice.infrastructures.Grpcs.UserClientsGrpc;
 import com.isums.issueservice.infrastructures.abstracts.IssueResponseService;
+import com.isums.userservice.grpc.UserResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -18,11 +20,12 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class IssueResponseController {
     private final IssueResponseService issueResponseService;
+    private final UserClientsGrpc userClientsGrpc;
 
     @PostMapping("/{ticketId}")
     public ApiResponse<IssueResponseDto> answer(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID ticketId, @RequestBody AnswerRequest req){
-      UUID staffId = UUID.fromString(jwt.getSubject());
-      IssueResponseDto res = issueResponseService.answer(staffId,ticketId,req);
+        UserResponse user = userClientsGrpc.getUserIdAndRoleByKeyCloakId(jwt.getSubject());
+      IssueResponseDto res = issueResponseService.answer(ticketId,user.getId(),req);
       return ApiResponses.created(res,"Send answer successfully");
     }
 

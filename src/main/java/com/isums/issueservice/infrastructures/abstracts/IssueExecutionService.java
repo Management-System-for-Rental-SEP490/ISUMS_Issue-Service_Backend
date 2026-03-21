@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.UUID;
 
 public interface IssueExecutionService {
-    IssueExecutionDto createExecution(UUID issueId, UUID staffId, CreateExecutionRequest req);
+    IssueExecutionDto createExecution(UUID issueId, String staffId, CreateExecutionRequest req);
     List<IssueExecutionDto> getAll();
     IssueExecutionDto getById(UUID id);
     List<IssueExecutionDto> getByTicketId(UUID ticketId);

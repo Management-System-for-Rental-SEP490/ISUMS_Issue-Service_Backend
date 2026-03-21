@@ -5,7 +5,9 @@ import com.isums.issueservice.domains.dtos.ApiResponses;
 import com.isums.issueservice.domains.dtos.CreateIssueRequest;
 import com.isums.issueservice.domains.dtos.IssueTicketDto;
 import com.isums.issueservice.domains.enums.IssueStatus;
+import com.isums.issueservice.infrastructures.Grpcs.UserClientsGrpc;
 import com.isums.issueservice.infrastructures.abstracts.IssueTicketService;
+import com.isums.userservice.grpc.UserResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -19,11 +21,12 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class IssueTicketController {
     private final IssueTicketService issueTicketService;
+    private final UserClientsGrpc userClientsGrpc;
 
     @PostMapping
     public ApiResponse<IssueTicketDto> createTicket(@AuthenticationPrincipal Jwt jwt,@RequestBody CreateIssueRequest req){
-        UUID tenantId = UUID.fromString(jwt.getSubject());
-        IssueTicketDto res = issueTicketService.createIssue(tenantId,req);
+        UserResponse user = userClientsGrpc.getUserIdAndRoleByKeyCloakId(jwt.getSubject());
+        IssueTicketDto res = issueTicketService.createIssue(UUID.fromString(user.getId()),req);
         return ApiResponses.created(res,"Create ticket successfully");
     }
 
@@ -35,8 +38,7 @@ public class IssueTicketController {
 
     @GetMapping("/tenant")
     public ApiResponse<List<IssueTicketDto>> getTicketById(@AuthenticationPrincipal Jwt jwt){
-        UUID tenantId = UUID.fromString(jwt.getSubject());
-        List<IssueTicketDto> res = issueTicketService.getTenantIssues(tenantId);
+        List<IssueTicketDto> res = issueTicketService.getTenantIssues(jwt.getSubject());
         return ApiResponses.ok(res,"Get all tenant tickets successfully");
     }
 

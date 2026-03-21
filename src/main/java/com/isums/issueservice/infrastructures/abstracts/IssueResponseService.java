@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.UUID;
 
 public interface IssueResponseService {
-    IssueResponseDto answer(UUID ticketId, UUID staffId, AnswerRequest req);
+    IssueResponseDto answer(UUID ticketId, String staffId, AnswerRequest req);
     List<IssueResponseDto> getAll();
     IssueResponseDto getByTicketId(UUID ticketId);
     IssueResponseDto getById(UUID Id);
