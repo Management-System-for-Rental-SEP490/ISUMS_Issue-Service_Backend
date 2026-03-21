@@ -32,7 +32,7 @@ public class IssueExecutionServiceImpl implements IssueExecutionService {
     private final AssetConditionProducer assetConditionProducer;
 
     @Override
-    public IssueExecutionDto createExecution(UUID issueId, UUID staffId, CreateExecutionRequest req) {
+    public IssueExecutionDto createExecution(UUID issueId, String staffId, CreateExecutionRequest req) {
         try{
             IssueTicket ticket = issueTicketRepository.findById(issueId)
                     .orElseThrow(() -> new RuntimeException("ticket not found"));
@@ -45,7 +45,7 @@ public class IssueExecutionServiceImpl implements IssueExecutionService {
                     .issueId(issueId)
                     .houseId(req.houseId())
                     .assetId(req.assetId())
-                    .staffId(staffId)
+                    .staffId(UUID.fromString(staffId))
                     .conditionScore(req.conditionScore())
                     .notes(req.notes())
                     .createdAt(Instant.now())
@@ -60,7 +60,7 @@ public class IssueExecutionServiceImpl implements IssueExecutionService {
 
             assetConditionProducer.sendConditionUpdate(event);
 
-            saveHistory(ticket, staffId, "EXECUTION_CREATED");
+            saveHistory(ticket, UUID.fromString(staffId), "EXECUTION_CREATED");
 
             return issueMapper.exe(created);
         } catch (Exception ex) {

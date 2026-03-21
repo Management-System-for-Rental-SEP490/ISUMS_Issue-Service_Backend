@@ -6,10 +6,12 @@ import com.isums.issueservice.domains.entities.IssueHistory;
 import com.isums.issueservice.domains.entities.IssueTicket;
 import com.isums.issueservice.domains.enums.IssueStatus;
 import com.isums.issueservice.domains.events.JobEvent;
+import com.isums.issueservice.infrastructures.Grpcs.UserClientsGrpc;
 import com.isums.issueservice.infrastructures.abstracts.IssueTicketService;
 import com.isums.issueservice.infrastructures.mappers.IssueMapper;
 import com.isums.issueservice.infrastructures.repositories.IssueHistoryRepository;
 import com.isums.issueservice.infrastructures.repositories.IssueTicketRepository;
+import com.isums.userservice.grpc.UserResponse;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -24,6 +26,8 @@ public class IssueTicketServiceImpl implements IssueTicketService {
     private final IssueTicketRepository issueTicketRepository;
     private final IssueHistoryRepository issueHistoryRepository;
     private final IssueMapper issueMapper;
+    private final UserClientsGrpc userClientsGrpc;
+
     @Transactional
     @Override
     public IssueTicketDto createIssue(UUID tenantId, CreateIssueRequest request) {
@@ -58,9 +62,10 @@ public class IssueTicketServiceImpl implements IssueTicketService {
     }
 
     @Override
-    public List<IssueTicketDto> getTenantIssues(UUID tenantId) {
+    public List<IssueTicketDto> getTenantIssues(String tenantId) {
         try{
-            List<IssueTicket> tickets = issueTicketRepository.findByTenantIdOrderByCreatedAtDesc(tenantId);
+            UserResponse user = userClientsGrpc.getUserIdAndRoleByKeyCloakId(tenantId);
+            List<IssueTicket> tickets = issueTicketRepository.findByTenantIdOrderByCreatedAtDesc(UUID.fromString(user.getId()));
             return issueMapper.toDtos(tickets);
         } catch (Exception ex) {
             throw new RuntimeException("Can't get ticket by tenantId " + ex.getMessage());

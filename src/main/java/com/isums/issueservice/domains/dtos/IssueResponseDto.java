@@ -4,7 +4,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record IssueResponseDto (
-        UUID Id,
+        UUID id,
         UUID ticketId,
         UUID actorId,
         String content,
