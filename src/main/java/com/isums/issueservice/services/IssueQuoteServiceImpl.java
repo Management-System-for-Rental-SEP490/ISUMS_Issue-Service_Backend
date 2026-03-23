@@ -2,19 +2,14 @@ package com.isums.issueservice.services;
 
 import com.isums.issueservice.domains.dtos.CreateQuoteRequest;
 import com.isums.issueservice.domains.dtos.IssueQuoteDto;
-import com.isums.issueservice.domains.entities.IssueHistory;
-import com.isums.issueservice.domains.entities.IssueQuote;
-import com.isums.issueservice.domains.entities.IssueTicket;
-import com.isums.issueservice.domains.entities.QuoteItem;
+import com.isums.issueservice.domains.entities.*;
 import com.isums.issueservice.domains.enums.IssueStatus;
 import com.isums.issueservice.domains.enums.QuoteStatus;
 import com.isums.issueservice.infrastructures.Grpcs.UserClientsGrpc;
 import com.isums.issueservice.infrastructures.abstracts.IssueQuoteService;
 import com.isums.issueservice.infrastructures.abstracts.IssueTicketService;
 import com.isums.issueservice.infrastructures.mappers.IssueMapper;
-import com.isums.issueservice.infrastructures.repositories.IssueHistoryRepository;
-import com.isums.issueservice.infrastructures.repositories.IssueQuoteRepository;
-import com.isums.issueservice.infrastructures.repositories.IssueTicketRepository;
+import com.isums.issueservice.infrastructures.repositories.*;
 import common.statics.Roles;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +28,8 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
     private final IssueHistoryRepository issueHistoryRepository;
     private final IssueQuoteRepository issueQuoteRepository;
     private final UserClientsGrpc userClientsGrpc;
+    private final QuoteBannerVersionRepository quoteBannerVersionRepository;
+    private final MaterialItemRepository materialItemRepository;
     @Override
     public IssueQuoteDto createQuote(UUID issueId, String staffId, CreateQuoteRequest req) {
         try{
@@ -57,17 +54,60 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
                     .build();
 
             List<QuoteItem> items = req.items().stream()
-                    .map(i -> QuoteItem.builder()
-                            .quote(quote)
-                            .itemName(i.itemName())
-                            .description(i.description())
-                            .price(i.price())
-                            .build())
-                    .toList();
+                    .map(i -> {
+
+                        if (i.bannerId() != null && i.itemName() != null) {
+                            throw new RuntimeException("Invalid item: both banner and custom");
+                        }
+
+                        if (i.bannerId() != null) {
+
+                            QuoteBannerVersion version = quoteBannerVersionRepository
+                                    .findCurrentVersion(i.bannerId(), Instant.now())
+                                    .orElseThrow(() -> new RuntimeException("Banner version not found"));
+
+                            return QuoteItem.builder()
+                                    .quote(quote)
+                                    .bannerVersion(version)
+                                    .itemName(version.getBanner().getName())
+                                    .price(version.getPrice())
+                                    .cost(version.getEstimatedCost())
+                                    .build();
+                        }
+                        //Custom
+                        if (i.itemName() == null || i.price() == null) {
+                            throw new RuntimeException("Custom item must have name and price");
+                        }
+
+                        BigDecimal cost = i.cost() != null ? i.cost() : BigDecimal.ZERO;
+
+                        MaterialItem material = materialItemRepository
+                                .findByName(i.itemName())
+                                .orElseGet(() -> MaterialItem.builder()
+                                        .name(i.itemName())
+                                        .build());
+
+                        material.setLastCost(cost);
+                        material.setUpdatedAt(Instant.now());
+
+                        materialItemRepository.save(material);
+
+                        return QuoteItem.builder()
+                                .quote(quote)
+                                .itemName(i.itemName())
+                                .description(i.description())
+                                .price(i.price())
+                                .cost(cost)
+                                .build();
+
+                    }).toList();
 
             quote.setItems(items);
 
-            BigDecimal total =items.stream().map(QuoteItem::getPrice).reduce(BigDecimal.ZERO,BigDecimal::add);
+            BigDecimal total =items.stream()
+                    .map(QuoteItem::getPrice)
+                    .reduce(BigDecimal.ZERO,BigDecimal::add);
+
             quote.setTotalPrice(total);
 
             IssueQuote created = issueQuoteRepository.save(quote);
