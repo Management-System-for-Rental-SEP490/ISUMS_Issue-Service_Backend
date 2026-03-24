@@ -1,22 +1,29 @@
 package com.isums.issueservice.services;
 
 import com.isums.issueservice.domains.dtos.CreateIssueRequest;
+import com.isums.issueservice.domains.dtos.IssueImageDto;
 import com.isums.issueservice.domains.dtos.IssueTicketDto;
 import com.isums.issueservice.domains.entities.IssueHistory;
+import com.isums.issueservice.domains.entities.IssueImage;
 import com.isums.issueservice.domains.entities.IssueTicket;
 import com.isums.issueservice.domains.enums.IssueStatus;
 import com.isums.issueservice.domains.events.JobEvent;
+import com.isums.issueservice.exceptions.NotFoundException;
 import com.isums.issueservice.infrastructures.Grpcs.UserClientsGrpc;
 import com.isums.issueservice.infrastructures.abstracts.IssueTicketService;
 import com.isums.issueservice.infrastructures.mappers.IssueMapper;
 import com.isums.issueservice.infrastructures.repositories.IssueHistoryRepository;
+import com.isums.issueservice.infrastructures.repositories.IssueImageRepository;
 import com.isums.issueservice.infrastructures.repositories.IssueTicketRepository;
 import com.isums.userservice.grpc.UserResponse;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -27,6 +34,9 @@ public class IssueTicketServiceImpl implements IssueTicketService {
     private final IssueHistoryRepository issueHistoryRepository;
     private final IssueMapper issueMapper;
     private final UserClientsGrpc userClientsGrpc;
+    private final S3ServiceImpl s3;
+    private final IssueImageRepository issueImageRepository;
+
 
     @Transactional
     @Override
@@ -160,6 +170,49 @@ public class IssueTicketServiceImpl implements IssueTicketService {
         IssueTicket saved = issueTicketRepository.save(ticket);
 
         saveHistory(saved, "NEED_RESCHEDULE");
+    }
+
+    @Override
+    public void uploadIssueImages(UUID issueId, List<MultipartFile> files) {
+        boolean isExist = issueTicketRepository.existsById(issueId);
+        if(!isExist){
+            throw new NotFoundException("Asset not found :  " + issueId);
+        }
+
+        IssueTicket ticket = issueTicketRepository.getReferenceById(issueId);
+
+        files.forEach(file -> {
+            String key = s3.upload(file,"issue/" + issueId);
+
+            IssueImage image = IssueImage.builder()
+                    .issueTicket(ticket)
+                    .key(key)
+                    .build();
+
+            issueImageRepository.save(image);
+        });
+    }
+
+    @Override
+    @Cacheable(value = "issueImages", key = "#issueId")
+    public List<IssueImageDto> getIssueImages(UUID issueId) {
+        List<IssueImage> images = issueImageRepository.findByIssueTicketId(issueId);
+
+        List<IssueImageDto> imageDto = new ArrayList<>();
+        images.forEach(image ->{
+            String url = s3.getImageUrl(image.getKey());
+            imageDto.add(new IssueImageDto(image.getId(),url,image.getCreatedAt()));
+        });
+
+        return imageDto;
+    }
+
+    @Override
+    public void deleteIssueImage(UUID issueId, UUID imageId) {
+        IssueImage image = issueImageRepository.findById(imageId)
+                .orElseThrow(() -> new NotFoundException("House image not found"));
+        s3.delete(image.getKey());
+        issueImageRepository.delete(image);
     }
 
     private void saveHistory(IssueTicket ticket, String action){
