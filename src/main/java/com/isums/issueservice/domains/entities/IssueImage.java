@@ -26,7 +26,7 @@ public class IssueImage {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ticket_id")
     private IssueTicket issueTicket;
-    private String imageUrl;
+    private String key;
 
     private Instant createdAt;
 }
