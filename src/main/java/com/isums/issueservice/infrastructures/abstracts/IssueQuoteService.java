@@ -13,5 +13,6 @@ public interface IssueQuoteService {
     List<IssueQuoteDto> getAll();
     IssueQuoteDto getById(UUID id);
     List<IssueQuoteDto> getByTicketId(UUID ticketId);
-    IssueQuoteDto updateQuoteStatus(UUID quoteId, String actorId, QuoteStatus newStatus);
+    IssueQuoteDto updateQuoteStatus(UUID quoteId, QuoteStatus newStatus);
+
 }

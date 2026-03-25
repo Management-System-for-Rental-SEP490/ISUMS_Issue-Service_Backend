@@ -199,7 +199,7 @@ public class IssueTicketServiceImpl implements IssueTicketService {
     public void uploadIssueImages(UUID issueId, List<MultipartFile> files) {
         boolean isExist = issueTicketRepository.existsById(issueId);
         if(!isExist){
-            throw new NotFoundException("Asset not found :  " + issueId);
+            throw new NotFoundException("Issue ticket not found :  " + issueId);
         }
 
         IssueTicket ticket = issueTicketRepository.getReferenceById(issueId);

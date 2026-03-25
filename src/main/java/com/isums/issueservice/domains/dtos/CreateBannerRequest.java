@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 
 public record CreateBannerRequest(
         String name,
-        BigDecimal price
+        BigDecimal price,
+        BigDecimal estimateCost
 ) {
 }

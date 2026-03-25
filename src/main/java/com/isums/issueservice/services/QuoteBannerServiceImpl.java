@@ -1,6 +1,7 @@
 package com.isums.issueservice.services;
 
 import com.isums.issueservice.domains.dtos.BannerDto;
+import com.isums.issueservice.domains.dtos.BannerVersionDto;
 import com.isums.issueservice.domains.dtos.CreateBannerRequest;
 import com.isums.issueservice.domains.entities.QuoteBanner;
 import com.isums.issueservice.domains.entities.QuoteBannerVersion;
@@ -22,6 +23,7 @@ public class QuoteBannerServiceImpl implements QuoteBannerService {
     private final QuoteBannerRepository quoteBannerRepository;
     private final QuoteBannerVersionRepository quoteBannerVersionRepository;
     private final IssueMapper issueMapper;
+
     @Override
     public BannerDto create(CreateBannerRequest req) {
         try{
@@ -38,6 +40,7 @@ public class QuoteBannerServiceImpl implements QuoteBannerService {
                     .isActive(true)
                     .effectiveFrom(Instant.now())
                     .price(req.price())
+                    .estimatedCost(req.estimateCost())
                     .createdAt(Instant.now())
                     .build();
 
@@ -95,6 +98,17 @@ public class QuoteBannerServiceImpl implements QuoteBannerService {
             return issueMapper.banner(banner, newPrice);
         } catch (Exception ex) {
             throw new RuntimeException("Can't update price for banner" + ex.getMessage());
+        }
+    }
+
+    @Override
+    public List<BannerVersionDto> getByBannerId(UUID bannerId) {
+        try{
+            List<QuoteBannerVersion> versions = quoteBannerVersionRepository.findByBannerIdOrderByEffectiveFromDesc(bannerId);
+            return issueMapper.versions(versions);
+
+        }catch (Exception ex) {
+            throw new RuntimeException("Can't get version for banner" + ex.getMessage());
         }
     }
 }

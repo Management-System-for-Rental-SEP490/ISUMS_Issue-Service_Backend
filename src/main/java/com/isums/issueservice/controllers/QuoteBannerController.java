@@ -1,9 +1,6 @@
 package com.isums.issueservice.controllers;
 
-import com.isums.issueservice.domains.dtos.ApiResponse;
-import com.isums.issueservice.domains.dtos.ApiResponses;
-import com.isums.issueservice.domains.dtos.BannerDto;
-import com.isums.issueservice.domains.dtos.CreateBannerRequest;
+import com.isums.issueservice.domains.dtos.*;
 import com.isums.issueservice.infrastructures.abstracts.QuoteBannerService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -34,5 +31,11 @@ public class QuoteBannerController {
     public ApiResponse<BannerDto> updatePrice(@PathVariable UUID id, @RequestParam BigDecimal price) {
         BannerDto res = quoteBannerService.updatePrice(id,price);
         return ApiResponses.ok(res,"update price for banner successfully");
+    }
+
+    @GetMapping("/{id}/version")
+    public ApiResponse<List<BannerVersionDto>> getVersionByBannerId(@PathVariable UUID id){
+        List<BannerVersionDto> res = quoteBannerService.getByBannerId(id);
+        return ApiResponses.ok(res,"get all banner successfully");
     }
 }

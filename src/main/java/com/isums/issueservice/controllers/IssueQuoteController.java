@@ -49,9 +49,8 @@ public class IssueQuoteController {
     }
 
     @PutMapping("/{id}/status")
-    public ApiResponse<IssueQuoteDto> updateQuoteStatus(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id, @RequestBody UpdateQuoteStatusRequest req) {
-        UserResponse user = userClientsGrpc.getUserIdAndRoleByKeyCloakId(jwt.getSubject());
-        IssueQuoteDto res = issueQuoteService.updateQuoteStatus(id, user.getId(), req.status());
+    public ApiResponse<IssueQuoteDto> updateQuoteStatus(@PathVariable UUID id, @RequestBody UpdateQuoteStatusRequest req) {
+        IssueQuoteDto res = issueQuoteService.updateQuoteStatus(id, req.status());
         return ApiResponses.ok(res, "Updated quote status");
     }
 }

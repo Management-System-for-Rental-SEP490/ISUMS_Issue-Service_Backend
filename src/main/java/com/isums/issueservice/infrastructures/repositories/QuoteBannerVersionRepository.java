@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -17,4 +18,6 @@ public interface QuoteBannerVersionRepository extends JpaRepository<QuoteBannerV
     AND (v.effectiveTo IS NULL OR v.effectiveTo > :now)
     """)
     Optional<QuoteBannerVersion> findCurrentVersion(UUID bannerId, Instant now);
+
+    List<QuoteBannerVersion> findByBannerIdOrderByEffectiveFromDesc(UUID bannerId);
 }
