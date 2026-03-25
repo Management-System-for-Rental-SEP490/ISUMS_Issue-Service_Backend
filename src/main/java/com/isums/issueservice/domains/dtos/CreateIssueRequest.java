@@ -10,7 +10,7 @@ public record CreateIssueRequest(
         UUID assetId,
         IssueType type,
         String title,
-        String description
-        //List<String> imageUrls
+        String description,
+        List<String> issueImage
 
 ) {}

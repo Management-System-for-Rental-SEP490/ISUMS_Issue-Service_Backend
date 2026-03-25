@@ -88,7 +88,30 @@ public class IssueTicketServiceImpl implements IssueTicketService {
            IssueTicket ticket = issueTicketRepository.findById(id)
                    .orElseThrow(() -> new RuntimeException("Ticket not found"));
 
-           return issueMapper.toDto(ticket);
+           String staffName = null;
+           String staffPhone = null;
+
+           if (ticket.getAssignedStaffId() != null) {
+               var user = userClientsGrpc.getUser(ticket.getAssignedStaffId().toString());
+               staffName = user.getName();
+               staffPhone = user.getPhoneNumber();
+           }
+           return new IssueTicketDto(
+                   ticket.getId(),
+                   ticket.getTenantId(),
+                   ticket.getHouseId(),
+                   ticket.getAssetId(),
+                   ticket.getAssignedStaffId(),
+                   staffName,
+                   staffPhone,
+                   ticket.getSlotId(),
+                   ticket.getType(),
+                   ticket.getStatus(),
+                   ticket.getTitle(),
+                   ticket.getDescription(),
+                   ticket.getCreatedAt()
+
+           );
 
        } catch (Exception ex) {
            throw new RuntimeException("Can't get ticket by id" + ex.getMessage());
@@ -176,7 +199,7 @@ public class IssueTicketServiceImpl implements IssueTicketService {
     public void uploadIssueImages(UUID issueId, List<MultipartFile> files) {
         boolean isExist = issueTicketRepository.existsById(issueId);
         if(!isExist){
-            throw new NotFoundException("Asset not found :  " + issueId);
+            throw new NotFoundException("Issue ticket not found :  " + issueId);
         }
 
         IssueTicket ticket = issueTicketRepository.getReferenceById(issueId);

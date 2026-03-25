@@ -10,9 +10,12 @@ import com.isums.issueservice.infrastructures.abstracts.IssueQuoteService;
 import com.isums.issueservice.infrastructures.abstracts.IssueTicketService;
 import com.isums.issueservice.infrastructures.mappers.IssueMapper;
 import com.isums.issueservice.infrastructures.repositories.*;
+import com.isums.userservice.grpc.UserResponse;
 import common.statics.Roles;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -148,6 +151,7 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
         }
     }
 
+    @Transactional
     @Override
     public List<IssueQuoteDto> getByTicketId(UUID ticketId) {
         try{
@@ -162,17 +166,27 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
 
     @Transactional
     @Override
-    public IssueQuoteDto updateQuoteStatus(UUID quoteId, String actorId, QuoteStatus newStatus) {
+    public IssueQuoteDto updateQuoteStatus(UUID quoteId, QuoteStatus newStatus) {
         try{
+
+            Jwt jwt = (Jwt) SecurityContextHolder.getContext()
+                    .getAuthentication()
+                    .getPrincipal();
+
+            String keycloakId = jwt.getSubject();
+
             IssueQuote quote = issueQuoteRepository.findById(quoteId)
                     .orElseThrow(() -> new RuntimeException("Quote not found"));
 
             IssueTicket ticket = quote.getIssueTicket();
             QuoteStatus status = quote.getStatus();
 
-            var userProfile = userClientsGrpc.getUserIdAndRoleByKeyCloakId(actorId);
-            var role = userProfile.getRolesList();
-            if(role.contains(Roles.MANAGER)) {
+            UserResponse userProfile = userClientsGrpc
+                    .getUserIdAndRoleByKeyCloakId(keycloakId);
+
+            UUID userId = UUID.fromString(userProfile.getId());
+            var roles = userProfile.getRolesList();
+            if(roles.contains(Roles.MANAGER) || roles.contains(Roles.LANDLORD)) {
                 if (status == QuoteStatus.WAITING_MANAGER_APPROVAL) {
 
                     if (newStatus == QuoteStatus.APPROVED) {
@@ -181,25 +195,25 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
                             quote.setStatus(QuoteStatus.APPROVED);
                             ticket.setStatus(IssueStatus.DONE);
 
-                            saveHistory(ticket, UUID.fromString(actorId), "MANAGER_APPROVED_FREE");
+                            saveHistory(ticket,userId, "MANAGER_APPROVED_FREE");
                         } else {
                             // do nguoi thue lam hu
                             quote.setStatus(QuoteStatus.WAITING_TENANT_APPROVAL);
                             ticket.setStatus(IssueStatus.WAITING_TENANT_APPROVAL);
 
-                            saveHistory(ticket, UUID.fromString(actorId), "MANAGER_APPROVED_QUOTE");
+                            saveHistory(ticket,userId, "MANAGER_APPROVED_QUOTE");
                         }
                     } else if (newStatus == QuoteStatus.REJECTED) {
                         quote.setStatus(QuoteStatus.REJECTED);
                         ticket.setStatus(IssueStatus.IN_PROGRESS);
 
-                        saveHistory(ticket, UUID.fromString(actorId), "MANAGER_REJECTED_QUOTE");
+                        saveHistory(ticket,userId, "MANAGER_REJECTED_QUOTE");
                     } else {
                         throw new RuntimeException("Invalid action");
                     }
                 }
             }
-            else if(role.contains(Roles.TENANT)) {
+            else if(roles.contains(Roles.TENANT)) {
                 if (status == QuoteStatus.WAITING_TENANT_APPROVAL) {
 
                     if (newStatus == QuoteStatus.APPROVED) {
@@ -207,14 +221,14 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
                         quote.setStatus(QuoteStatus.APPROVED);
                         ticket.setStatus(IssueStatus.WAITING_PAYMENT);
 
-                        saveHistory(ticket, UUID.fromString(actorId), "TENANT_APPROVED_QUOTE");
+                        saveHistory(ticket,userId, "TENANT_APPROVED_QUOTE");
 
                     } else if (newStatus == QuoteStatus.REJECTED) {
 
                         quote.setStatus(QuoteStatus.REJECTED);
                         ticket.setStatus(IssueStatus.CANCELLED);
 
-                        saveHistory(ticket, UUID.fromString(actorId), "TENANT_REJECTED_QUOTE");
+                        saveHistory(ticket,userId, "TENANT_REJECTED_QUOTE");
 
                     } else {
                         throw new RuntimeException("Invalid action");
