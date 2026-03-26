@@ -13,7 +13,8 @@ import java.util.List;
 public interface IssueMapper {
     IssueTicketDto toDto(IssueTicket ticket);
     List<IssueTicketDto> toDtos(List<IssueTicket> tickets);
-    @Mapping(source = "issueTicket.id" , target = "ticketId")
+
+    @Mapping(source = "issueTicket.id", target = "ticketId")
     IssueResponseDto res(IssueResponse response);
     List<IssueResponseDto> ress(List<IssueResponse> responses);
 
@@ -27,12 +28,11 @@ public interface IssueMapper {
     IssueQuoteDto.QuoteItemDto item(QuoteItem item);
     List<IssueQuoteDto.QuoteItemDto> items(List<QuoteItem> items);
 
-    @Mapping(source = "price" ,target = "currentPrice")
-    BannerDto banner (QuoteBanner banner, BigDecimal price);
-    List<BannerDto> banners(List<QuoteBanner> banners);
+    @Mapping(source = "price", target = "currentPrice")
+    BannerDto banner(QuoteBanner banner, BigDecimal price);
 
 
-    @Mapping(source = "banner.id", target = "bannerId")
-    BannerVersionDto version (QuoteBannerVersion version);
+    @Mapping(source = "banner.id", target = "banner")
+    BannerVersionDto version(QuoteBannerVersion version);
     List<BannerVersionDto> versions(List<QuoteBannerVersion> versions);
 }
