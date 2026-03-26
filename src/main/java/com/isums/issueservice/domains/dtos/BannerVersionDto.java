@@ -12,7 +12,7 @@ import java.util.UUID;
 
 public record BannerVersionDto(
         UUID id,
-        UUID banner,
+        UUID bannerId,
         BigDecimal price,
         Instant effectiveFrom,
         Instant effectiveTo,

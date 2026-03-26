@@ -119,9 +119,15 @@ public class IssueTicketServiceImpl implements IssueTicketService {
     }
 
     @Override
-    public List<IssueTicketDto> getAll() {
+    public List<IssueTicketDto> getAll(IssueStatus status) {
         try{
-            List<IssueTicket> tickets = issueTicketRepository.findAll();
+
+            List<IssueTicket> tickets ;
+            if(status != null){
+                tickets = issueTicketRepository.findByStatus(status);
+            }else{
+                tickets = issueTicketRepository.findAll();
+            }
             return issueMapper.toDtos(tickets);
         } catch (Exception ex) {
             throw new RuntimeException("Can't get all ticket" + ex.getMessage());

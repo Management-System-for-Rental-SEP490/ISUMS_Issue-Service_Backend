@@ -14,7 +14,7 @@ public interface IssueTicketService {
     IssueTicketDto createIssue(UUID tenantId, CreateIssueRequest request);
     List<IssueTicketDto> getTenantIssues(String tenantId);
     IssueTicketDto getIssueById(UUID id);
-    List<IssueTicketDto> getAll();
+    List<IssueTicketDto> getAll(IssueStatus status);
     IssueTicketDto updateStatus(UUID id , IssueStatus newStatus);
     void markScheduled(JobEvent event);
     void markRescheduled(JobEvent event);

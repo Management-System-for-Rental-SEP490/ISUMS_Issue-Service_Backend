@@ -30,8 +30,8 @@ public class IssueTicketController {
     }
 
     @GetMapping
-    public ApiResponse<List<IssueTicketDto>> getAll(){
-        List<IssueTicketDto> res = issueTicketService.getAll();
+    public ApiResponse<List<IssueTicketDto>> getAll(@RequestParam(required = false) IssueStatus status){
+        List<IssueTicketDto> res = issueTicketService.getAll(status);
         return ApiResponses.ok(res,"Get all tickets successfully");
     }
 
