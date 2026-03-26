@@ -1,6 +1,9 @@
 package com.isums.issueservice.domains.entities;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -13,32 +16,22 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Table(name = "quote_banner_versions")
+@Table(name = "material_items")
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class QuoteBannerVersion {
+public class MaterialItem {
 
     @Id
     @UuidGenerator
     @GeneratedValue
     private UUID id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "banner_id")
-    private QuoteBanner banner;
+    private String name;
 
-    private BigDecimal price;
-
-    private Instant effectiveFrom;
-
-    private Instant effectiveTo;
-
-    private Boolean isActive;
-
-    private BigDecimal estimatedCost;
+    private BigDecimal lastCost;
 
     @CreationTimestamp
-    private Instant createdAt;
+    private Instant updatedAt;
 }

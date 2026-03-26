@@ -27,9 +27,16 @@ public class QuoteItem {
     @JoinColumn(name = "quote_id")
     private IssueQuote quote;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "banner_version_id")
+    private QuoteBannerVersion bannerVersion;
+
     private String itemName;
 
     private String description;
 
     private BigDecimal price;
+
+    private BigDecimal cost;
+
 }

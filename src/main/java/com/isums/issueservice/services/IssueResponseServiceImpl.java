@@ -4,6 +4,8 @@ import com.isums.issueservice.domains.dtos.AnswerRequest;
 import com.isums.issueservice.domains.dtos.IssueResponseDto;
 import com.isums.issueservice.domains.entities.IssueResponse;
 import com.isums.issueservice.domains.entities.IssueTicket;
+import com.isums.issueservice.domains.enums.IssueStatus;
+import com.isums.issueservice.domains.enums.IssueType;
 import com.isums.issueservice.infrastructures.abstracts.IssueResponseService;
 import com.isums.issueservice.infrastructures.mappers.IssueMapper;
 import com.isums.issueservice.infrastructures.repositories.IssueResponseRepository;
@@ -35,6 +37,10 @@ public class IssueResponseServiceImpl implements IssueResponseService{
                     .build();
 
             IssueResponse created = issueResponseRepository.save(response);
+            if (ticket.getType() == IssueType.QUESTION) {
+                ticket.setStatus(IssueStatus.DONE);
+            }
+            issueTicketRepository.save(ticket);
 
             return issueMapper.res(created);
 
