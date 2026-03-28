@@ -32,7 +32,7 @@ public interface IssueMapper {
     BannerDto banner(QuoteBanner banner, BigDecimal price);
 
 
-    @Mapping(source = "banner.id", target = "banner")
+    @Mapping(source = "banner.id", target = "bannerId")
     BannerVersionDto version(QuoteBannerVersion version);
     List<BannerVersionDto> versions(List<QuoteBannerVersion> versions);
 }

@@ -13,6 +13,7 @@ import java.util.UUID;
 public interface IssueTicketService {
     IssueTicketDto createIssue(UUID tenantId, CreateIssueRequest request);
     List<IssueTicketDto> getTenantIssues(String tenantId);
+    List<IssueTicketDto> getByStaffId(String staffId);
     IssueTicketDto getIssueById(UUID id);
     List<IssueTicketDto> getAll(IssueStatus status);
     IssueTicketDto updateStatus(UUID id , IssueStatus newStatus);

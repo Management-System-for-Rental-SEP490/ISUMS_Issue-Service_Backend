@@ -83,6 +83,17 @@ public class IssueTicketServiceImpl implements IssueTicketService {
     }
 
     @Override
+    public List<IssueTicketDto> getByStaffId(String staffId) {
+        try{
+            UserResponse user = userClientsGrpc.getUserIdAndRoleByKeyCloakId(staffId);
+            List<IssueTicket> tickets = issueTicketRepository.findByAssignedStaffIdOrderByCreatedAtDesc(UUID.fromString(user.getId()));
+            return issueMapper.toDtos(tickets);
+        } catch (Exception ex) {
+            throw new RuntimeException("Can't get ticket by tenantId " + ex.getMessage());
+        }
+    }
+
+    @Override
     public IssueTicketDto getIssueById(UUID id) {
        try{
            IssueTicket ticket = issueTicketRepository.findById(id)

@@ -12,7 +12,7 @@ import java.util.UUID;
 public interface IssueTicketRepository extends JpaRepository<IssueTicket,UUID> {
     List<IssueTicket> findByTenantIdOrderByCreatedAtDesc(UUID tenantId);
     List<IssueTicket> findByStatus(IssueStatus status);
-    List<IssueTicket> findByAssignedStaffIdAndStatus(UUID staffId, IssueStatus status);
+    List<IssueTicket> findByAssignedStaffIdOrderByCreatedAtDesc(UUID staffId);
 
     List<IssueTicket> findByHouseId(UUID houseId);
 
