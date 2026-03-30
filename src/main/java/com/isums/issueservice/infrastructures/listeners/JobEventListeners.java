@@ -1,5 +1,6 @@
 package com.isums.issueservice.infrastructures.listeners;
 
+import com.isums.issueservice.domains.enums.JobAction;
 import com.isums.issueservice.domains.events.JobEvent;
 import com.isums.issueservice.infrastructures.abstracts.IssueTicketService;
 import lombok.RequiredArgsConstructor;
@@ -36,5 +37,13 @@ public class JobEventListeners {
             return;
         }
         issueTicketService.markNeedReschedule(event);
+    }
+
+    @KafkaListener(topics = "job.assigned", groupId = "issue-group")
+    public void handleAuto(JobEvent event){
+        if(!event.getReferenceType().equals("ISSUE")) return;
+        if (event.getAction() == JobAction.JOB_ASSIGNED) {
+            issueTicketService.markSlot(event);
+        }
     }
 }

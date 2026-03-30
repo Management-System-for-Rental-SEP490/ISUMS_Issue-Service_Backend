@@ -23,4 +23,5 @@ public interface IssueTicketService {
     void uploadIssueImages(UUID issueId, List<MultipartFile> files);
     List<IssueImageDto> getIssueImages(UUID issueId);
     void deleteIssueImage(UUID issueId, UUID imageId);
+    void markSlot(JobEvent event);
 }
