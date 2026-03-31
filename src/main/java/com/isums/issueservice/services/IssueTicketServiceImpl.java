@@ -286,7 +286,7 @@ public class IssueTicketServiceImpl implements IssueTicketService {
         if (ticket.getSlotId() != null) {
             return;
         }
-        ticket.setSlotId(event.getSlotId());
+
         ticket.setAssignedStaffId(event.getStaffId());
 
         issueTicketRepository.save(ticket);
