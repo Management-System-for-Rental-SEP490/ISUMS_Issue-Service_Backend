@@ -11,6 +11,7 @@ import java.util.UUID;
 public record IssueTicketDto(
         UUID id,
         UUID tenantId,
+        String tenantPhone,
         UUID houseId,
         UUID assetId,
         UUID assignedStaffId,

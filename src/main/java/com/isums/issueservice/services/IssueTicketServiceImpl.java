@@ -7,10 +7,13 @@ import com.isums.issueservice.domains.entities.IssueHistory;
 import com.isums.issueservice.domains.entities.IssueImage;
 import com.isums.issueservice.domains.entities.IssueTicket;
 import com.isums.issueservice.domains.enums.IssueStatus;
+import com.isums.issueservice.domains.enums.IssueType;
+import com.isums.issueservice.domains.enums.JobAction;
 import com.isums.issueservice.domains.events.JobEvent;
 import com.isums.issueservice.exceptions.NotFoundException;
 import com.isums.issueservice.infrastructures.Grpcs.UserClientsGrpc;
 import com.isums.issueservice.infrastructures.abstracts.IssueTicketService;
+import com.isums.issueservice.infrastructures.kafka.JobEventProducer;
 import com.isums.issueservice.infrastructures.mappers.IssueMapper;
 import com.isums.issueservice.infrastructures.repositories.IssueHistoryRepository;
 import com.isums.issueservice.infrastructures.repositories.IssueImageRepository;
@@ -36,6 +39,7 @@ public class IssueTicketServiceImpl implements IssueTicketService {
     private final UserClientsGrpc userClientsGrpc;
     private final S3ServiceImpl s3;
     private final IssueImageRepository issueImageRepository;
+    private final JobEventProducer jobEventProducer;
 
 
     @Transactional
@@ -64,6 +68,18 @@ public class IssueTicketServiceImpl implements IssueTicketService {
 
             issueHistoryRepository.save(history);
 
+            if (created.getType() == IssueType.REPAIR) {
+
+                JobEvent event = JobEvent.builder()
+                        .referenceId(created.getId())
+                        .houseId(created.getHouseId())
+                        .referenceType("ISSUE")
+                        .action(JobAction.JOB_CREATED)
+                        .build();
+
+                jobEventProducer.publishJobCreated(event);
+            }
+
             return issueMapper.toDto(created);
 
         } catch (Exception ex) {
@@ -83,6 +99,17 @@ public class IssueTicketServiceImpl implements IssueTicketService {
     }
 
     @Override
+    public List<IssueTicketDto> getByStaffId(String staffId) {
+        try{
+            UserResponse user = userClientsGrpc.getUserIdAndRoleByKeyCloakId(staffId);
+            List<IssueTicket> tickets = issueTicketRepository.findByAssignedStaffIdOrderByCreatedAtDesc(UUID.fromString(user.getId()));
+            return issueMapper.toDtos(tickets);
+        } catch (Exception ex) {
+            throw new RuntimeException("Can't get ticket by tenantId " + ex.getMessage());
+        }
+    }
+
+    @Override
     public IssueTicketDto getIssueById(UUID id) {
        try{
            IssueTicket ticket = issueTicketRepository.findById(id)
@@ -90,15 +117,22 @@ public class IssueTicketServiceImpl implements IssueTicketService {
 
            String staffName = null;
            String staffPhone = null;
+           String tenantPhone = null;
 
            if (ticket.getAssignedStaffId() != null) {
                var user = userClientsGrpc.getUser(ticket.getAssignedStaffId().toString());
                staffName = user.getName();
                staffPhone = user.getPhoneNumber();
            }
+
+           if(ticket.getTenantId() != null){
+               var user = userClientsGrpc.getUser(ticket.getTenantId().toString());
+               tenantPhone = user.getPhoneNumber();
+           }
            return new IssueTicketDto(
                    ticket.getId(),
                    ticket.getTenantId(),
+                   tenantPhone,
                    ticket.getHouseId(),
                    ticket.getAssetId(),
                    ticket.getAssignedStaffId(),
@@ -119,9 +153,15 @@ public class IssueTicketServiceImpl implements IssueTicketService {
     }
 
     @Override
-    public List<IssueTicketDto> getAll() {
+    public List<IssueTicketDto> getAll(IssueStatus status) {
         try{
-            List<IssueTicket> tickets = issueTicketRepository.findAll();
+
+            List<IssueTicket> tickets ;
+            if(status != null){
+                tickets = issueTicketRepository.findByStatus(status);
+            }else{
+                tickets = issueTicketRepository.findAll();
+            }
             return issueMapper.toDtos(tickets);
         } catch (Exception ex) {
             throw new RuntimeException("Can't get all ticket" + ex.getMessage());
@@ -236,6 +276,21 @@ public class IssueTicketServiceImpl implements IssueTicketService {
                 .orElseThrow(() -> new NotFoundException("House image not found"));
         s3.delete(image.getKey());
         issueImageRepository.delete(image);
+    }
+
+    @Override
+    public void markSlot(JobEvent event) {
+        IssueTicket ticket = issueTicketRepository.findById((event.getReferenceId()))
+                .orElseThrow(() -> new RuntimeException("Job not found"));
+
+        if (ticket.getSlotId() != null) {
+            return;
+        }
+
+        ticket.setAssignedStaffId(event.getStaffId());
+
+        issueTicketRepository.save(ticket);
+        saveHistory(ticket,"Assign_Slot");
     }
 
     private void saveHistory(IssueTicket ticket, String action){

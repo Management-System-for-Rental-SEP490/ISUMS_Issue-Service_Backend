@@ -30,8 +30,8 @@ public class IssueTicketController {
     }
 
     @GetMapping
-    public ApiResponse<List<IssueTicketDto>> getAll(){
-        List<IssueTicketDto> res = issueTicketService.getAll();
+    public ApiResponse<List<IssueTicketDto>> getAll(@RequestParam(required = false) IssueStatus status){
+        List<IssueTicketDto> res = issueTicketService.getAll(status);
         return ApiResponses.ok(res,"Get all tickets successfully");
     }
 
@@ -39,6 +39,12 @@ public class IssueTicketController {
     public ApiResponse<List<IssueTicketDto>> getTicketById(@AuthenticationPrincipal Jwt jwt){
         List<IssueTicketDto> res = issueTicketService.getTenantIssues(jwt.getSubject());
         return ApiResponses.ok(res,"Get all tenant tickets successfully");
+    }
+
+    @GetMapping("/staff")
+    public ApiResponse<List<IssueTicketDto>> getTicketByStaffId(@AuthenticationPrincipal Jwt jwt){
+        List<IssueTicketDto> res = issueTicketService.getByStaffId(jwt.getSubject());
+        return ApiResponses.ok(res,"Get all tenant tickets by staffId successfully");
     }
 
     @GetMapping("/{ticketId}")
