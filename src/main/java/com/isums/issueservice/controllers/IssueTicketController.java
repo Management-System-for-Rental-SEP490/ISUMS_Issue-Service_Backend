@@ -2,6 +2,7 @@ package com.isums.issueservice.controllers;
 
 import com.isums.issueservice.domains.dtos.*;
 import com.isums.issueservice.domains.enums.IssueStatus;
+import com.isums.issueservice.domains.enums.IssueType;
 import com.isums.issueservice.infrastructures.Grpcs.UserClientsGrpc;
 import com.isums.issueservice.infrastructures.abstracts.IssueTicketService;
 import com.isums.userservice.grpc.UserResponse;
@@ -30,8 +31,8 @@ public class IssueTicketController {
     }
 
     @GetMapping
-    public ApiResponse<List<IssueTicketDto>> getAll(@RequestParam(required = false) IssueStatus status){
-        List<IssueTicketDto> res = issueTicketService.getAll(status);
+    public ApiResponse<List<IssueTicketDto>> getAll(@RequestParam(required = false) IssueStatus status,@RequestParam(required = false) IssueType type){
+        List<IssueTicketDto> res = issueTicketService.getAll(status,type);
         return ApiResponses.ok(res,"Get all tickets successfully");
     }
 

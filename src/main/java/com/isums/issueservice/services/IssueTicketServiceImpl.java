@@ -153,11 +153,14 @@ public class IssueTicketServiceImpl implements IssueTicketService {
     }
 
     @Override
-    public List<IssueTicketDto> getAll(IssueStatus status) {
+    public List<IssueTicketDto> getAll(IssueStatus status, IssueType type) {
         try{
 
             List<IssueTicket> tickets ;
-            if(status != null){
+            if(status != null && type != null){
+                tickets = issueTicketRepository.findByStatusAndType(status, type);
+            }
+            else if(status != null){
                 tickets = issueTicketRepository.findByStatus(status);
             }else{
                 tickets = issueTicketRepository.findAll();
