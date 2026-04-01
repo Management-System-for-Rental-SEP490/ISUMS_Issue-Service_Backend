@@ -23,11 +23,16 @@ public class IssueResponseServiceImpl implements IssueResponseService{
     private final IssueResponseRepository issueResponseRepository;
     private final IssueTicketRepository issueTicketRepository;
     private final IssueMapper issueMapper;
+
     @Override
     public IssueResponseDto answer(UUID ticketId, String staffId, AnswerRequest req) {
         try{
             IssueTicket ticket = issueTicketRepository.findById(ticketId)
                     .orElseThrow(() -> new RuntimeException("Ticket not found"));
+
+            if(ticket.getType() != IssueType.QUESTION){
+                throw new RuntimeException("Only ticket with type QUESTION can be answer");
+            }
 
             IssueResponse response = IssueResponse.builder()
                     .issueTicket(ticket)
