@@ -46,4 +46,12 @@ public class JobEventListeners {
             issueTicketService.markSlot(event);
         }
     }
+
+    @KafkaListener(topics = "job.waiting.confirm", groupId = "issue-group")
+    public void handleConfirm(JobEvent event){
+        if(!event.getReferenceType().equals("ISSUE")) return;
+        if (event.getAction() == JobAction.JOB_WAITING_MANAGER_CONFIRM) {
+            issueTicketService.markConfirmSlot(event);
+        }
+    }
 }

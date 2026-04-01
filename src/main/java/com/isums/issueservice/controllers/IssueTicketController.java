@@ -54,12 +54,12 @@ public class IssueTicketController {
         return ApiResponses.ok(res,"Get all tickets successfully");
     }
 
-    @PutMapping("/{id}/status")
-    public ApiResponse<IssueTicketDto> updateStatus(@PathVariable UUID id, @RequestParam IssueStatus status
-    ) {
-        IssueTicketDto res = issueTicketService.updateStatus(id, status);
-        return ApiResponses.ok(res, "Update status success");
-    }
+//    @PutMapping("/{id}/status")
+//    public ApiResponse<IssueTicketDto> updateStatus(@PathVariable UUID id, @RequestParam IssueStatus status
+//    ) {
+//        IssueTicketDto res = issueTicketService.updateStatus(id, status);
+//        return ApiResponses.ok(res, "Update status success");
+//    }
 
     @PostMapping(value = "/{issueId}/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<IssueImageDto> uploadIssueImages(@PathVariable UUID issueId, @RequestParam("files") List<MultipartFile> files) {

@@ -298,6 +298,20 @@ public class IssueTicketServiceImpl implements IssueTicketService {
         saveHistory(ticket,"Assign_Slot");
     }
 
+    @Override
+    public void markConfirmSlot(JobEvent event) {
+        IssueTicket ticket  = issueTicketRepository.findById(event.getReferenceId())
+                .orElseThrow(() -> new RuntimeException("Ticket not found"));
+
+        if(ticket.getSlotId() != null){
+            throw new RuntimeException("ticket isn't assign in schedule yet");
+        }
+
+        ticket.setStatus(IssueStatus.WAITING_MANAGER_CONFIRM);
+        issueTicketRepository.save(ticket);
+        saveHistory(ticket,"WAITING_MANAGER_CONFIRM");
+    }
+
     private void saveHistory(IssueTicket ticket, String action){
 
         IssueHistory history = new IssueHistory();
@@ -327,22 +341,22 @@ public class IssueTicketServiceImpl implements IssueTicketService {
                 break;
 
             case IN_PROGRESS:
-                if (next != IssueStatus.WAITING_MANAGER_APPROVAL
+                if (next != IssueStatus.WAITING_MANAGER_APPROVAL_QUOTE
                     && next != IssueStatus.DONE     // kieu sua 1 cai la het
                     && next != IssueStatus.CANCELLED) { // tenant k co o nha
                     throw new RuntimeException("Invalid transition");
                 }
                 break;
 
-            case WAITING_MANAGER_APPROVAL:
-                if (next != IssueStatus.WAITING_TENANT_APPROVAL &&
+            case WAITING_MANAGER_APPROVAL_QUOTE:
+                if (next != IssueStatus.WAITING_TENANT_APPROVAL_QUOTE &&
                         next != IssueStatus.IN_PROGRESS
                         && next != IssueStatus.CANCELLED) { // reject
                     throw new RuntimeException("Invalid transition");
                 }
                 break;
 
-            case WAITING_TENANT_APPROVAL:
+            case WAITING_TENANT_APPROVAL_QUOTE:
                 if (next != IssueStatus.WAITING_PAYMENT &&
                         next != IssueStatus.DONE
                         && next != IssueStatus.CANCELLED) {

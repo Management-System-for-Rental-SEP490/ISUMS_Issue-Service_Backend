@@ -115,7 +115,7 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
 
             IssueQuote created = issueQuoteRepository.save(quote);
 
-            ticket.setStatus(IssueStatus.WAITING_MANAGER_APPROVAL);
+            ticket.setStatus(IssueStatus.WAITING_MANAGER_APPROVAL_QUOTE);
             issueTicketRepository.save(ticket);
 
             saveHistory(ticket, UUID.fromString(staffId), "QUOTE_CREATED");
@@ -199,7 +199,7 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
                         } else {
                             // do nguoi thue lam hu
                             quote.setStatus(QuoteStatus.WAITING_TENANT_APPROVAL);
-                            ticket.setStatus(IssueStatus.WAITING_TENANT_APPROVAL);
+                            ticket.setStatus(IssueStatus.WAITING_TENANT_APPROVAL_QUOTE);
 
                             saveHistory(ticket,userId, "MANAGER_APPROVED_QUOTE");
                         }

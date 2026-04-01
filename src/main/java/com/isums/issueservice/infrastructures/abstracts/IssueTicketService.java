@@ -25,4 +25,5 @@ public interface IssueTicketService {
     List<IssueImageDto> getIssueImages(UUID issueId);
     void deleteIssueImage(UUID issueId, UUID imageId);
     void markSlot(JobEvent event);
+    void markConfirmSlot(JobEvent event);
 }
