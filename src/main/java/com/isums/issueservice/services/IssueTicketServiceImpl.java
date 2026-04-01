@@ -162,6 +162,8 @@ public class IssueTicketServiceImpl implements IssueTicketService {
             }
             else if(status != null){
                 tickets = issueTicketRepository.findByStatus(status);
+            } else if (type != null) {
+                tickets = issueTicketRepository.findByType(type);
             }else{
                 tickets = issueTicketRepository.findAll();
             }

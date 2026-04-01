@@ -15,6 +15,7 @@ public interface IssueTicketRepository extends JpaRepository<IssueTicket,UUID> {
     List<IssueTicket> findByStatus(IssueStatus status);
     List<IssueTicket> findByAssignedStaffIdOrderByCreatedAtDesc(UUID staffId);
     List<IssueTicket> findByStatusAndType(IssueStatus status, IssueType type);
+    List<IssueTicket> findByType(IssueType type);
     List<IssueTicket> findByHouseId(UUID houseId);
 
 }
