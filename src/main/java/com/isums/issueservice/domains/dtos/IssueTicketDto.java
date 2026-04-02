@@ -5,6 +5,7 @@ import com.isums.issueservice.domains.enums.IssueType;
 import lombok.Data;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 
@@ -18,6 +19,8 @@ public record IssueTicketDto(
         String staffName,
         String staffPhone,
         UUID slotId,
+        LocalDateTime startTime,
+        LocalDateTime endTime,
         IssueType type,
         IssueStatus status,
         String title,

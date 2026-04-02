@@ -139,6 +139,8 @@ public class IssueTicketServiceImpl implements IssueTicketService {
                    staffName,
                    staffPhone,
                    ticket.getSlotId(),
+                   ticket.getStartTime(),
+                   ticket.getEndTime(),
                    ticket.getType(),
                    ticket.getStatus(),
                    ticket.getTitle(),
@@ -293,6 +295,7 @@ public class IssueTicketServiceImpl implements IssueTicketService {
         }
 
         ticket.setAssignedStaffId(event.getStaffId());
+        ticket.setSlotId(event.getSlotId());
 
         issueTicketRepository.save(ticket);
         saveHistory(ticket,"Assign_Slot");
@@ -303,11 +306,14 @@ public class IssueTicketServiceImpl implements IssueTicketService {
         IssueTicket ticket  = issueTicketRepository.findById(event.getReferenceId())
                 .orElseThrow(() -> new RuntimeException("Ticket not found"));
 
-        if(ticket.getSlotId() != null){
-            throw new RuntimeException("ticket isn't assign in schedule yet");
+        if(ticket.getSlotId() == null){
+            throw new RuntimeException("Ticket isn't assign in schedule yet");
         }
 
         ticket.setStatus(IssueStatus.WAITING_MANAGER_CONFIRM);
+        ticket.setStartTime(event.getStartTime());
+        ticket.setEndTime(event.getEndTime());
+
         issueTicketRepository.save(ticket);
         saveHistory(ticket,"WAITING_MANAGER_CONFIRM");
     }

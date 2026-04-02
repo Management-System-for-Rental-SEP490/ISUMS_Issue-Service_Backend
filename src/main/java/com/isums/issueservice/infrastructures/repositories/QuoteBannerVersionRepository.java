@@ -19,5 +19,14 @@ public interface QuoteBannerVersionRepository extends JpaRepository<QuoteBannerV
     """)
     Optional<QuoteBannerVersion> findCurrentVersion(UUID bannerId, Instant now);
 
+    @Query("""
+    SELECT v FROM QuoteBannerVersion v
+    JOIN FETCH v.banner b
+    WHERE v.isActive = true
+    AND v.effectiveFrom <= :now
+    AND (v.effectiveTo IS NULL OR v.effectiveTo > :now)
+    """)
+    List<QuoteBannerVersion> findAllActiveVersions(Instant now);
+
     List<QuoteBannerVersion> findByBannerIdOrderByEffectiveFromDesc(UUID bannerId);
 }
