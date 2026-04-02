@@ -20,6 +20,7 @@ public record IssueTicketDto(
         String staffPhone,
         UUID slotId,
         LocalDateTime startTime,
+        LocalDateTime endTime,
         IssueType type,
         IssueStatus status,
         String title,

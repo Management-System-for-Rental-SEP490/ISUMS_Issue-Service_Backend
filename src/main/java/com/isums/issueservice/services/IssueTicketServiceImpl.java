@@ -140,6 +140,7 @@ public class IssueTicketServiceImpl implements IssueTicketService {
                    staffPhone,
                    ticket.getSlotId(),
                    ticket.getStartTime(),
+                   ticket.getEndTime(),
                    ticket.getType(),
                    ticket.getStatus(),
                    ticket.getTitle(),
