@@ -46,7 +46,7 @@ public class QuoteBannerServiceImpl implements QuoteBannerService {
 
             quoteBannerVersionRepository.save(version);
 
-            return issueMapper.banner(banner,version.getPrice());
+            return issueMapper.banner(banner,version.getPrice(),version.getEstimatedCost());
         } catch (Exception ex) {
             throw new RuntimeException("Can't create new banner" + ex.getMessage());
         }
@@ -55,14 +55,18 @@ public class QuoteBannerServiceImpl implements QuoteBannerService {
     @Override
     public List<BannerDto> getAll() {
         try{
-            List<QuoteBanner> banners = quoteBannerRepository.findAll();
             Instant now = Instant.now();
+            List<QuoteBannerVersion> versions =
+                    quoteBannerVersionRepository.findAllActiveVersions(now);
 
-            return banners.stream().map(b -> {
-                BigDecimal price = quoteBannerVersionRepository.findCurrentVersion(b.getId(),now)
-                        .map(QuoteBannerVersion::getPrice)
-                        .orElse(null);
-                return issueMapper.banner(b,price);
+            return versions.stream().map(v -> {
+                QuoteBanner banner = v.getBanner();
+
+                return issueMapper.banner(
+                        banner,
+                        v.getPrice(),
+                        v.getEstimatedCost()
+                );
             }).toList();
 
         } catch (Exception ex) {
@@ -83,11 +87,15 @@ public class QuoteBannerServiceImpl implements QuoteBannerService {
                     .orElseThrow(() -> new RuntimeException("Current version not found"));
 
             current.setEffectiveTo(now);
+            current.setIsActive(false);
             quoteBannerVersionRepository.save(current);
+
+            BigDecimal estimatedCost = current.getEstimatedCost();
 
             QuoteBannerVersion newVersion = QuoteBannerVersion.builder()
                     .banner(banner)
                     .price(newPrice)
+                    .estimatedCost(estimatedCost)
                     .effectiveFrom(now)
                     .isActive(true)
                     .createdAt(now)
@@ -95,7 +103,7 @@ public class QuoteBannerServiceImpl implements QuoteBannerService {
 
             quoteBannerVersionRepository.save(newVersion);
 
-            return issueMapper.banner(banner, newPrice);
+            return issueMapper.banner(banner, newPrice,estimatedCost);
         } catch (Exception ex) {
             throw new RuntimeException("Can't update price for banner" + ex.getMessage());
         }
