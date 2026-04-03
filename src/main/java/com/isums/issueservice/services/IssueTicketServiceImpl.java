@@ -105,7 +105,7 @@ public class IssueTicketServiceImpl implements IssueTicketService {
             List<IssueTicket> tickets = issueTicketRepository.findByAssignedStaffIdOrderByCreatedAtDesc(UUID.fromString(user.getId()));
             return issueMapper.toDtos(tickets);
         } catch (Exception ex) {
-            throw new RuntimeException("Can't get ticket by tenantId " + ex.getMessage());
+            throw new RuntimeException("Can't get ticket by staff " + ex.getMessage());
         }
     }
 
