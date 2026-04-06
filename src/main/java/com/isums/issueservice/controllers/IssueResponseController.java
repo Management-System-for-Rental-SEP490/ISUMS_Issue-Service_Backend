@@ -4,7 +4,7 @@ import com.isums.issueservice.domains.dtos.AnswerRequest;
 import com.isums.issueservice.domains.dtos.ApiResponse;
 import com.isums.issueservice.domains.dtos.ApiResponses;
 import com.isums.issueservice.domains.dtos.IssueResponseDto;
-import com.isums.issueservice.infrastructures.Grpcs.UserClientsGrpc;
+import com.isums.issueservice.infrastructures.grpcs.UserClientsGrpc;
 import com.isums.issueservice.infrastructures.abstracts.IssueResponseService;
 import com.isums.userservice.grpc.UserResponse;
 import lombok.RequiredArgsConstructor;
