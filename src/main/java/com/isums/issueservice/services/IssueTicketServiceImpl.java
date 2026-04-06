@@ -11,7 +11,7 @@ import com.isums.issueservice.domains.enums.IssueType;
 import com.isums.issueservice.domains.enums.JobAction;
 import com.isums.issueservice.domains.events.JobEvent;
 import com.isums.issueservice.exceptions.NotFoundException;
-import com.isums.issueservice.infrastructures.Grpcs.UserClientsGrpc;
+import com.isums.issueservice.infrastructures.grpcs.UserClientsGrpc;
 import com.isums.issueservice.infrastructures.abstracts.IssueTicketService;
 import com.isums.issueservice.infrastructures.kafka.JobEventProducer;
 import com.isums.issueservice.infrastructures.mappers.IssueMapper;
