@@ -147,7 +147,7 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
             return issueMapper.quote(quote);
 
         }catch (Exception ex) {
-            throw new RuntimeException("Can't update status quote " + ex.getMessage());
+            throw new RuntimeException("Can't get quote by id " + ex.getMessage());
         }
     }
 
