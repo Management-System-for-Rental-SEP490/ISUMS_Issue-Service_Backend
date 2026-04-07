@@ -1,8 +1,7 @@
 package com.isums.issueservice.controllers;
 
 import com.isums.issueservice.domains.dtos.*;
-import com.isums.issueservice.domains.entities.IssueExecution;
-import com.isums.issueservice.infrastructures.Grpcs.UserClientsGrpc;
+import com.isums.issueservice.infrastructures.grpcs.UserClientsGrpc;
 import com.isums.issueservice.infrastructures.abstracts.IssueExecutionService;
 import com.isums.userservice.grpc.UserResponse;
 import lombok.RequiredArgsConstructor;
