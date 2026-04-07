@@ -2,9 +2,9 @@ package com.isums.issueservice.infrastructures.grpcs;
 
 import com.isums.userservice.grpc.*;
 import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
-@Service
+@Component
 @RequiredArgsConstructor
 public class UserClientsGrpc {
     private final UserServiceGrpc.UserServiceBlockingStub stub;
