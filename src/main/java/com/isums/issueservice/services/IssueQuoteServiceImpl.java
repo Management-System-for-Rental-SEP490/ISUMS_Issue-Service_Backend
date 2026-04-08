@@ -5,15 +5,16 @@ import com.isums.issueservice.domains.dtos.IssueQuoteDto;
 import com.isums.issueservice.domains.entities.*;
 import com.isums.issueservice.domains.enums.IssueStatus;
 import com.isums.issueservice.domains.enums.QuoteStatus;
-import com.isums.issueservice.infrastructures.Grpcs.UserClientsGrpc;
+import com.isums.issueservice.domains.events.QuoteInvoiceCreateEvent;
 import com.isums.issueservice.infrastructures.abstracts.IssueQuoteService;
-import com.isums.issueservice.infrastructures.abstracts.IssueTicketService;
+import com.isums.issueservice.infrastructures.grpcs.UserClientsGrpc;
 import com.isums.issueservice.infrastructures.mappers.IssueMapper;
 import com.isums.issueservice.infrastructures.repositories.*;
 import com.isums.userservice.grpc.UserResponse;
 import common.statics.Roles;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
@@ -33,9 +34,11 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
     private final UserClientsGrpc userClientsGrpc;
     private final QuoteBannerVersionRepository quoteBannerVersionRepository;
     private final MaterialItemRepository materialItemRepository;
+    private final KafkaTemplate<String, Object> kafka;
+
     @Override
     public IssueQuoteDto createQuote(UUID issueId, String staffId, CreateQuoteRequest req) {
-        try{
+        try {
             IssueTicket ticket = issueTicketRepository.findById(issueId)
                     .orElseThrow(() -> new RuntimeException("Ticket not found"));
 
@@ -107,15 +110,15 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
 
             quote.setItems(items);
 
-            BigDecimal total =items.stream()
+            BigDecimal total = items.stream()
                     .map(QuoteItem::getPrice)
-                    .reduce(BigDecimal.ZERO,BigDecimal::add);
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
 
             quote.setTotalPrice(total);
 
             IssueQuote created = issueQuoteRepository.save(quote);
 
-            ticket.setStatus(IssueStatus.WAITING_MANAGER_APPROVAL);
+            ticket.setStatus(IssueStatus.WAITING_MANAGER_APPROVAL_QUOTE);
             issueTicketRepository.save(ticket);
 
             saveHistory(ticket, UUID.fromString(staffId), "QUOTE_CREATED");
@@ -129,24 +132,24 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
 
     @Override
     public List<IssueQuoteDto> getAll() {
-        try{
+        try {
             List<IssueQuote> quotes = issueQuoteRepository.findAll();
             return issueMapper.quotes(quotes);
 
-        }catch (Exception ex) {
+        } catch (Exception ex) {
             throw new RuntimeException("Can't get all quote " + ex.getMessage());
         }
     }
 
     @Override
     public IssueQuoteDto getById(UUID id) {
-        try{
+        try {
             IssueQuote quote = issueQuoteRepository.findById(id)
                     .orElseThrow(() -> new RuntimeException("Quote not found"));
 
             return issueMapper.quote(quote);
 
-        }catch (Exception ex) {
+        } catch (Exception ex) {
             throw new RuntimeException("Can't update status quote " + ex.getMessage());
         }
     }
@@ -154,11 +157,11 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
     @Transactional
     @Override
     public List<IssueQuoteDto> getByTicketId(UUID ticketId) {
-        try{
+        try {
             List<IssueQuote> quotes = issueQuoteRepository.findByIssueTicketIdOrderByCreatedAtDesc(ticketId);
             return issueMapper.quotes(quotes);
 
-        }catch (Exception ex) {
+        } catch (Exception ex) {
             throw new RuntimeException("Can't update status quote " + ex.getMessage());
         }
     }
@@ -167,7 +170,7 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
     @Transactional
     @Override
     public IssueQuoteDto updateQuoteStatus(UUID quoteId, QuoteStatus newStatus) {
-        try{
+        try {
 
             Jwt jwt = (Jwt) SecurityContextHolder.getContext()
                     .getAuthentication()
@@ -186,7 +189,7 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
 
             UUID userId = UUID.fromString(userProfile.getId());
             var roles = userProfile.getRolesList();
-            if(roles.contains(Roles.MANAGER) || roles.contains(Roles.LANDLORD)) {
+            if (roles.contains(Roles.MANAGER) || roles.contains(Roles.LANDLORD)) {
                 if (status == QuoteStatus.WAITING_MANAGER_APPROVAL) {
 
                     if (newStatus == QuoteStatus.APPROVED) {
@@ -195,41 +198,43 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
                             quote.setStatus(QuoteStatus.APPROVED);
                             ticket.setStatus(IssueStatus.DONE);
 
-                            saveHistory(ticket,userId, "MANAGER_APPROVED_FREE");
+                            saveHistory(ticket, userId, "MANAGER_APPROVED_FREE");
                         } else {
                             // do nguoi thue lam hu
                             quote.setStatus(QuoteStatus.WAITING_TENANT_APPROVAL);
-                            ticket.setStatus(IssueStatus.WAITING_TENANT_APPROVAL);
+                            ticket.setStatus(IssueStatus.WAITING_TENANT_APPROVAL_QUOTE);
 
-                            saveHistory(ticket,userId, "MANAGER_APPROVED_QUOTE");
+                            saveHistory(ticket, userId, "MANAGER_APPROVED_QUOTE");
                         }
                     } else if (newStatus == QuoteStatus.REJECTED) {
                         quote.setStatus(QuoteStatus.REJECTED);
                         ticket.setStatus(IssueStatus.IN_PROGRESS);
 
-                        saveHistory(ticket,userId, "MANAGER_REJECTED_QUOTE");
+                        saveHistory(ticket, userId, "MANAGER_REJECTED_QUOTE");
                     } else {
                         throw new RuntimeException("Invalid action");
                     }
                 }
-            }
-            else if(roles.contains(Roles.TENANT)) {
+            } else if (roles.contains(Roles.TENANT)) {
                 if (status == QuoteStatus.WAITING_TENANT_APPROVAL) {
 
                     if (newStatus == QuoteStatus.APPROVED) {
-
                         quote.setStatus(QuoteStatus.APPROVED);
                         ticket.setStatus(IssueStatus.WAITING_PAYMENT);
+                        saveHistory(ticket, userId, "TENANT_APPROVED_QUOTE");
 
-                        saveHistory(ticket,userId, "TENANT_APPROVED_QUOTE");
+                        kafka.send("quote-invoice-create", QuoteInvoiceCreateEvent.builder()
+                                .quoteId(quote.getId())
+                                .issueId(ticket.getId())
+                                .tenantId(ticket.getTenantId())
+                                .houseId(ticket.getHouseId())
+                                .totalPrice(quote.getTotalPrice())
+                                .build());
 
                     } else if (newStatus == QuoteStatus.REJECTED) {
-
                         quote.setStatus(QuoteStatus.REJECTED);
                         ticket.setStatus(IssueStatus.CANCELLED);
-
-                        saveHistory(ticket,userId, "TENANT_REJECTED_QUOTE");
-
+                        saveHistory(ticket, userId, "TENANT_REJECTED_QUOTE");
                     } else {
                         throw new RuntimeException("Invalid action");
                     }
@@ -243,12 +248,12 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
 
             return issueMapper.quote(quote);
 
-        }catch (Exception ex) {
+        } catch (Exception ex) {
             throw new RuntimeException("Can't update status quote " + ex.getMessage());
         }
     }
 
-    private void saveHistory(IssueTicket ticket, UUID actorId, String action){
+    private void saveHistory(IssueTicket ticket, UUID actorId, String action) {
 
         IssueHistory history = new IssueHistory();
 

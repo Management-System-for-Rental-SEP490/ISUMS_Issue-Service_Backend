@@ -7,6 +7,8 @@ import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.UUID;
@@ -38,6 +40,10 @@ public class IssueTicket {
     private UUID assignedStaffId;
 
     private UUID slotId;
+
+    private LocalDateTime startTime;
+
+    private LocalDateTime endTime;
 
     @Enumerated(EnumType.STRING)
     private IssueType type;

@@ -2,7 +2,8 @@ package com.isums.issueservice.controllers;
 
 import com.isums.issueservice.domains.dtos.*;
 import com.isums.issueservice.domains.enums.IssueStatus;
-import com.isums.issueservice.infrastructures.Grpcs.UserClientsGrpc;
+import com.isums.issueservice.domains.enums.IssueType;
+import com.isums.issueservice.infrastructures.grpcs.UserClientsGrpc;
 import com.isums.issueservice.infrastructures.abstracts.IssueTicketService;
 import com.isums.userservice.grpc.UserResponse;
 import lombok.RequiredArgsConstructor;
@@ -30,8 +31,8 @@ public class IssueTicketController {
     }
 
     @GetMapping
-    public ApiResponse<List<IssueTicketDto>> getAll(){
-        List<IssueTicketDto> res = issueTicketService.getAll();
+    public ApiResponse<List<IssueTicketDto>> getAll(@RequestParam(required = false) IssueStatus status,@RequestParam(required = false) IssueType type){
+        List<IssueTicketDto> res = issueTicketService.getAll(status,type);
         return ApiResponses.ok(res,"Get all tickets successfully");
     }
 
@@ -39,6 +40,12 @@ public class IssueTicketController {
     public ApiResponse<List<IssueTicketDto>> getTicketById(@AuthenticationPrincipal Jwt jwt){
         List<IssueTicketDto> res = issueTicketService.getTenantIssues(jwt.getSubject());
         return ApiResponses.ok(res,"Get all tenant tickets successfully");
+    }
+
+    @GetMapping("/staff")
+    public ApiResponse<List<IssueTicketDto>> getTicketByStaffId(@AuthenticationPrincipal Jwt jwt){
+        List<IssueTicketDto> res = issueTicketService.getByStaffId(jwt.getSubject());
+        return ApiResponses.ok(res,"Get all tenant tickets by staffId successfully");
     }
 
     @GetMapping("/{ticketId}")

@@ -29,9 +29,11 @@ public interface IssueMapper {
     List<IssueQuoteDto.QuoteItemDto> items(List<QuoteItem> items);
 
     @Mapping(source = "price", target = "currentPrice")
-    BannerDto banner(QuoteBanner banner, BigDecimal price);
+    @Mapping(source = "estimateCost", target = "estimatedCost")
+    BannerDto banner(QuoteBanner banner, BigDecimal price, BigDecimal estimateCost);
 
-    @Mapping(source = "banner.id", target = "banner")
+
+    @Mapping(source = "banner.id", target = "bannerId")
     BannerVersionDto version(QuoteBannerVersion version);
     List<BannerVersionDto> versions(List<QuoteBannerVersion> versions);
 }

@@ -6,6 +6,7 @@ import java.util.UUID;
 public record BannerDto(
         UUID id,
         String name,
-        BigDecimal currentPrice
+        BigDecimal currentPrice,
+        BigDecimal estimatedCost
 ) {
 }
