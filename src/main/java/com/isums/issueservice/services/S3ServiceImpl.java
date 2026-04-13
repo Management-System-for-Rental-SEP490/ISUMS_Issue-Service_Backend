@@ -29,7 +29,7 @@ public class S3ServiceImpl {
     public String upload(MultipartFile file, String folder) {
         try {
             String ext = getExtension(file.getOriginalFilename());
-            String key = "media/" + "folder" + "/" + UUID.randomUUID() + "." + ext;
+            String key = "media/" + folder + "/" + UUID.randomUUID() + "." + ext;
 
             s3Client.putObject(PutObjectRequest.builder()
                     .bucket(bucket)
