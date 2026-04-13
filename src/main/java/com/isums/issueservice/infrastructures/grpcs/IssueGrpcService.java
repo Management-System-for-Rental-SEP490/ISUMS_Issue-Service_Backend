@@ -1,13 +1,13 @@
 package com.isums.issueservice.infrastructures.grpcs;
 
 import com.isums.issueservice.domains.entities.IssueQuote;
+import com.isums.issueservice.domains.entities.IssueTicket;
 import com.isums.issueservice.domains.entities.QuoteItem;
-import com.isums.issueservice.grpc.GetQuoteByIdRequest;
-import com.isums.issueservice.grpc.IssueServiceGrpc;
-import com.isums.issueservice.grpc.QuoteDetailResponse;
-import com.isums.issueservice.grpc.QuoteResponse;
+import com.isums.issueservice.grpc.*;
 import com.isums.issueservice.infrastructures.repositories.IssueQuoteRepository;
+import com.isums.issueservice.infrastructures.repositories.IssueTicketRepository;
 import com.isums.issueservice.infrastructures.repositories.QuoteItemRepository;
+import com.isums.maintenanceservice.grpc.GetJobResponse;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +25,7 @@ public class IssueGrpcService extends IssueServiceGrpc.IssueServiceImplBase {
 
     private final IssueQuoteRepository issueQuoteRepository;
     private final QuoteItemRepository quoteItemRepository;
+    private final IssueTicketRepository issueTicketRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -111,6 +112,45 @@ public class IssueGrpcService extends IssueServiceGrpc.IssueServiceImplBase {
 
         } catch (Exception e) {
             responseObserver.onError(e);
+        }
+    }
+
+    @Override
+    public void getHouseByIssueId(GetIssueRequest request, StreamObserver<GetIssueResponse> responseObserver) {
+        try {
+            UUID id;
+            try {
+                id = UUID.fromString(request.getId());
+            } catch (IllegalArgumentException e) {
+                responseObserver.onError(
+                        Status.INVALID_ARGUMENT
+                                .withDescription("Invalid jobId format")
+                                .asRuntimeException()
+                );
+                return;
+            }
+
+            IssueTicket ticket = issueTicketRepository.findById(id)
+                    .orElseThrow(() ->
+                            Status.NOT_FOUND
+                                    .withDescription("ticketId not found: " + id)
+                                    .asRuntimeException()
+                    );
+
+            GetIssueResponse response = GetIssueResponse.newBuilder()
+                    .setId(id.toString())
+                    .setHouseId(ticket.getHouseId().toString())
+                    .build();
+
+            responseObserver.onNext(response);
+            responseObserver.onCompleted();
+        } catch (io.grpc.StatusRuntimeException e) {
+            responseObserver.onError(e);
+        } catch (Exception e) {
+            log.error("[IssueGrpc] getHouseByIssueId failed ticketId={}: {}",
+                    request.getId(), e.getMessage(), e);
+            responseObserver.onError(
+                    Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
         }
     }
 }
