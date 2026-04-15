@@ -11,6 +11,7 @@ import java.util.List;
 
 @Mapper(componentModel = "spring")
 public interface IssueMapper {
+    @Mapping(target = "images",ignore = true)
     IssueTicketDto toDto(IssueTicket ticket);
     List<IssueTicketDto> toDtos(List<IssueTicket> tickets);
 
@@ -36,4 +37,6 @@ public interface IssueMapper {
     @Mapping(source = "banner.id", target = "bannerId")
     BannerVersionDto version(QuoteBannerVersion version);
     List<BannerVersionDto> versions(List<QuoteBannerVersion> versions);
+
+    IssueImageDto toImageDto(IssueImage image);
 }
