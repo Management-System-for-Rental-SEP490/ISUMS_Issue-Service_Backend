@@ -6,7 +6,11 @@ import com.isums.issueservice.domains.enums.IssueType;
 import com.isums.issueservice.infrastructures.grpcs.UserClientsGrpc;
 import com.isums.issueservice.infrastructures.abstracts.IssueTicketService;
 import com.isums.userservice.grpc.UserResponse;
+import common.paginations.dtos.PageRequestParams;
+import common.paginations.dtos.PageResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -31,9 +35,9 @@ public class IssueTicketController {
     }
 
     @GetMapping
-    public ApiResponse<List<IssueTicketDto>> getAll(@RequestParam(required = false) IssueStatus status,@RequestParam(required = false) IssueType type){
-        List<IssueTicketDto> res = issueTicketService.getAll(status,type);
-        return ApiResponses.ok(res,"Get all tickets successfully");
+    public ApiResponse<PageResponse<IssueTicketDto>> GetAllHouses(@ParameterObject @Valid @ModelAttribute PageRequestParams params) {
+        var res = issueTicketService.getAll(params.toPageRequest());
+        return ApiResponses.ok(res, "Success to get all issues");
     }
 
     @GetMapping("/tenant")

@@ -3,6 +3,7 @@ package com.isums.issueservice.infrastructures.grpcs;
 import com.isums.userservice.grpc.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
 
 @Component
 @RequiredArgsConstructor

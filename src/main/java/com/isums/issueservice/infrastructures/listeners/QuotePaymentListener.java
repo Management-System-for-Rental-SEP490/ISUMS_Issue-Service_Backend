@@ -4,7 +4,11 @@ import com.isums.issueservice.domains.entities.IssueHistory;
 import com.isums.issueservice.domains.entities.IssueQuote;
 import com.isums.issueservice.domains.entities.IssueTicket;
 import com.isums.issueservice.domains.enums.IssueStatus;
+import com.isums.issueservice.domains.enums.JobAction;
+import com.isums.issueservice.domains.events.JobEvent;
 import com.isums.issueservice.domains.events.QuotePaymentCompletedEvent;
+import com.isums.issueservice.infrastructures.abstracts.IssueTicketService;
+import com.isums.issueservice.infrastructures.kafka.JobEventProducer;
 import com.isums.issueservice.infrastructures.repositories.IssueHistoryRepository;
 import com.isums.issueservice.infrastructures.repositories.IssueQuoteRepository;
 import com.isums.issueservice.infrastructures.repositories.IssueTicketRepository;
@@ -28,11 +32,14 @@ public class QuotePaymentListener {
     private final IssueTicketRepository issueTicketRepository;
     private final IssueHistoryRepository issueHistoryRepository;
     private final ObjectMapper objectMapper;
+    private final JobEventProducer jobEventProducer;
+    private final IssueTicketService issueTicketService;
 
     @KafkaListener(topics = "quote-payment-completed", groupId = "issue-group")
     @Transactional
     public void handleQuotePaymentCompleted(ConsumerRecord<String, String> record,
                                             Acknowledgment ack) {
+        log.info("[Issue] RAW kafka received: {}", record.value());
         QuotePaymentCompletedEvent event = null;
         try {
             event = objectMapper.readValue(record.value(), QuotePaymentCompletedEvent.class);
@@ -60,6 +67,8 @@ public class QuotePaymentListener {
             ticket.setStatus(IssueStatus.DONE);
             issueTicketRepository.save(ticket);
 
+            issueTicketService.markSlotDone(ticket);
+
             IssueHistory history = IssueHistory.builder()
                     .issueTicket(ticket)
                     .actorId(event.getTenantId())
@@ -77,5 +86,6 @@ public class QuotePaymentListener {
             log.error("[Issue] handleQuotePaymentCompleted failed quoteId={}: {}",
                     event != null ? event.getQuoteId() : "unknown", e.getMessage(), e);
         }
+
     }
 }

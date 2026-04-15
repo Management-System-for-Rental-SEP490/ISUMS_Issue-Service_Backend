@@ -19,12 +19,21 @@ import com.isums.issueservice.infrastructures.repositories.IssueHistoryRepositor
 import com.isums.issueservice.infrastructures.repositories.IssueImageRepository;
 import com.isums.issueservice.infrastructures.repositories.IssueTicketRepository;
 import com.isums.userservice.grpc.UserResponse;
+import common.paginations.cache.CachedPageService;
+import common.paginations.converters.SpringPageConverter;
+import common.paginations.dtos.PageRequest;
+import common.paginations.dtos.PageResponse;
+import common.paginations.specifications.SpecificationBuilder;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import tools.jackson.core.type.TypeReference;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -32,6 +41,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class IssueTicketServiceImpl implements IssueTicketService {
     private final IssueTicketRepository issueTicketRepository;
     private final IssueHistoryRepository issueHistoryRepository;
@@ -40,6 +50,10 @@ public class IssueTicketServiceImpl implements IssueTicketService {
     private final S3ServiceImpl s3;
     private final IssueImageRepository issueImageRepository;
     private final JobEventProducer jobEventProducer;
+    private final CachedPageService cachedPageService;
+
+    private static final String PAGE_NS = "issues";
+    private static final Duration PAGE_TTL = Duration.ofMinutes(60);
 
 
     @Transactional
@@ -67,6 +81,7 @@ public class IssueTicketServiceImpl implements IssueTicketService {
                     .build();
 
             issueHistoryRepository.save(history);
+            cachedPageService.evictAll(PAGE_NS);
 
             if (created.getType() == IssueType.REPAIR) {
 
@@ -145,34 +160,25 @@ public class IssueTicketServiceImpl implements IssueTicketService {
                    ticket.getStatus(),
                    ticket.getTitle(),
                    ticket.getDescription(),
-                   ticket.getCreatedAt()
-
-           );
-
+                   ticket.getCreatedAt(),
+                   ticket.getImages().stream()
+                           .map(img -> new IssueImageDto(
+                                   img.getId(),
+                                   img.getKey(),
+                                   img.getCreatedAt()
+                           ))
+                           .toList());
        } catch (Exception ex) {
            throw new RuntimeException("Can't get ticket by id" + ex.getMessage());
        }
     }
 
     @Override
-    public List<IssueTicketDto> getAll(IssueStatus status, IssueType type) {
-        try{
-
-            List<IssueTicket> tickets ;
-            if(status != null && type != null){
-                tickets = issueTicketRepository.findByStatusAndType(status, type);
-            }
-            else if(status != null){
-                tickets = issueTicketRepository.findByStatus(status);
-            } else if (type != null) {
-                tickets = issueTicketRepository.findByType(type);
-            }else{
-                tickets = issueTicketRepository.findAll();
-            }
-            return issueMapper.toDtos(tickets);
-        } catch (Exception ex) {
-            throw new RuntimeException("Can't get all ticket" + ex.getMessage());
-        }
+    public PageResponse<IssueTicketDto> getAll(PageRequest request) {
+        return cachedPageService.getOrLoad(PAGE_NS, request, new TypeReference<>() {
+                },
+                () -> loadPage(request)
+        );
     }
 
     @Override
@@ -188,9 +194,13 @@ public class IssueTicketServiceImpl implements IssueTicketService {
             ticket.setStatus(newStatus);
 
             IssueTicket saved = issueTicketRepository.save(ticket);
+            log.error("🔥 UPDATE STATUS SUCCESS ticketId={} NOW={}",
+                    id,
+                    saved.getStatus()
+            );
 
             saveHistory(saved, "STATUS_" + newStatus.name());
-
+            cachedPageService.evictAll(PAGE_NS);
             return issueMapper.toDto(saved);
 
         }  catch (Exception ex) {
@@ -318,6 +328,19 @@ public class IssueTicketServiceImpl implements IssueTicketService {
         saveHistory(ticket,"WAITING_MANAGER_CONFIRM");
     }
 
+    public void markSlotDone(IssueTicket ticket) {
+        if (ticket.getStatus() == IssueStatus.DONE) {
+            JobEvent markDoneEvent = JobEvent.builder()
+                    .referenceId(ticket.getId())
+                    .slotId(ticket.getSlotId())
+                    .staffId(ticket.getAssignedStaffId())
+                    .referenceType("ISSUE")
+                    .action(JobAction.JOB_COMPLETED)
+                    .build();
+            jobEventProducer.publishJobCompleted(markDoneEvent);
+        }
+    }
+
     private void saveHistory(IssueTicket ticket, String action){
 
         IssueHistory history = new IssueHistory();
@@ -379,5 +402,80 @@ public class IssueTicketServiceImpl implements IssueTicketService {
             default:
                 throw new RuntimeException("Invalid transition");
         }
+    }
+
+    private PageResponse<IssueTicketDto> loadPage(PageRequest request) {
+        IssueStatus statusFilter = request.<String>filterValue("status")
+                .map(s -> {
+                    try {
+                        return IssueStatus.valueOf(s.toUpperCase().trim());
+                    } catch (IllegalArgumentException e) {
+                        return null;
+                    }
+                })
+                .orElse(null);
+
+        IssueType typeFilter = request.<String>filterValue("type")
+                .map(t -> {
+                    try {
+                        return IssueType.valueOf(t.toUpperCase().trim());
+                    } catch (Exception e) {
+                        return null;
+                    }
+                })
+                .orElse(null);
+
+        String statusesRaw = request.<String>filterValue("statuses").orElse(null);
+
+        String houseIdRaw = request.<String>filterValue("houseId").orElse(null);
+        UUID houseIdFilter = houseIdRaw != null ? UUID.fromString(houseIdRaw) : null;
+
+        var spec = SpecificationBuilder.<IssueTicket>create()
+                .keywordLike(request.keyword(), "note")
+                .enumEq("status", statusFilter)
+                .enumInRaw("status", statusesRaw, IssueStatus.class)
+                .eq("houseId", houseIdFilter)
+                .enumEq("type", typeFilter)
+                .build();
+        var pageable = SpringPageConverter.toPageable(request);
+        Page<IssueTicket> page = issueTicketRepository.findAll(spec, pageable);
+        List<IssueTicket> tickets = page.getContent();
+
+        List<IssueTicketDto> dtos = tickets.stream()
+                .map(ticket -> {
+                    IssueTicketDto dto = issueMapper.toDto(ticket);
+
+                    List<IssueImageDto> images = getIssueImages(ticket.getId());
+
+                    return new IssueTicketDto(
+                            dto.id(),
+                            dto.tenantId(),
+                            dto.tenantPhone(),
+                            dto.houseId(),
+                            dto.assetId(),
+                            dto.assignedStaffId(),
+                            dto.staffName(),
+                            dto.staffPhone(),
+                            dto.slotId(),
+                            dto.startTime(),
+                            dto.endTime(),
+                            dto.type(),
+                            dto.status(),
+                            dto.title(),
+                            dto.description(),
+                            dto.createdAt(),
+                            images
+                    );
+                })
+                .toList();
+
+        return PageResponse.of(
+                dtos,
+                page.hasNext(),
+                page.getTotalElements(),
+                page.getTotalPages(),
+                page.getNumber(),
+                page.getSize()
+        );
     }
 }
