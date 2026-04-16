@@ -144,6 +144,11 @@ public class IssueTicketServiceImpl implements IssueTicketService {
                var user = userClientsGrpc.getUser(ticket.getTenantId().toString());
                tenantPhone = user.getPhoneNumber();
            }
+
+           List<IssueImageDto> images = issueImageRepository.findByIssueTicketId(id).stream()
+                   .map(img -> new IssueImageDto(img.getId(), s3.getImageUrl(img.getKey()), img.getCreatedAt()))
+                   .toList();
+
            return new IssueTicketDto(
                    ticket.getId(),
                    ticket.getTenantId(),
@@ -161,13 +166,10 @@ public class IssueTicketServiceImpl implements IssueTicketService {
                    ticket.getTitle(),
                    ticket.getDescription(),
                    ticket.getCreatedAt(),
-                   ticket.getImages().stream()
-                           .map(img -> new IssueImageDto(
-                                   img.getId(),
-                                   img.getKey(),
-                                   img.getCreatedAt()
-                           ))
-                           .toList());
+                   images
+
+           );
+
        } catch (Exception ex) {
            throw new RuntimeException("Can't get ticket by id" + ex.getMessage());
        }

@@ -2,9 +2,10 @@ package com.isums.issueservice.infrastructures.mappers;
 
 import com.isums.issueservice.domains.dtos.*;
 import com.isums.issueservice.domains.entities.*;
+import com.isums.issueservice.services.S3ServiceImpl;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
-import org.springframework.boot.Banner;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.math.BigDecimal;
 import java.util.List;

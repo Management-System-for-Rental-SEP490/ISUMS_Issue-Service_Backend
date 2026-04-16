@@ -2,7 +2,6 @@ package com.isums.issueservice.domains.dtos;
 
 import com.isums.issueservice.domains.enums.IssueStatus;
 import com.isums.issueservice.domains.enums.IssueType;
-import lombok.Data;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -28,5 +27,6 @@ public record IssueTicketDto(
         String description,
         Instant createdAt,
         List<IssueImageDto> images
+
 ) {
 }
