@@ -8,6 +8,8 @@ import com.isums.issueservice.domains.enums.IssueType;
 import com.isums.issueservice.infrastructures.mappers.IssueMapper;
 import com.isums.issueservice.infrastructures.repositories.IssueResponseRepository;
 import com.isums.issueservice.infrastructures.repositories.IssueTicketRepository;
+import common.i18n.TranslationMap;
+import common.paginations.cache.CachedPageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -16,6 +18,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Optional;
@@ -24,17 +28,23 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 @DisplayName("IssueResponseServiceImpl")
 class IssueResponseServiceImplTest {
 
     @Mock private IssueResponseRepository responseRepo;
     @Mock private IssueTicketRepository ticketRepo;
     @Mock private IssueMapper mapper;
+    @Mock private CachedPageService cachedPageService;
+    @Mock private TranslationAutoFillService translationAutoFillService;
+    @Mock private TranslationLocaleSupport translationLocaleSupport;
 
     @InjectMocks private IssueResponseServiceImpl service;
 
@@ -43,6 +53,11 @@ class IssueResponseServiceImplTest {
     @BeforeEach
     void setUp() {
         ticketId = UUID.randomUUID();
+        when(translationAutoFillService.complete(anyString()))
+                .thenAnswer(invocation -> {
+                    String text = invocation.getArgument(0, String.class);
+                    return TranslationMap.of(java.util.Map.of("vi", text, "en", text, "ja", text));
+                });
     }
 
     @Nested
@@ -63,6 +78,7 @@ class IssueResponseServiceImplTest {
             assertThat(ticket.getStatus()).isEqualTo(IssueStatus.DONE);
             verify(responseRepo).save(any(IssueResponse.class));
             verify(ticketRepo).save(ticket);
+            verify(cachedPageService).evictAll("issues");
         }
 
         @Test
@@ -95,7 +111,7 @@ class IssueResponseServiceImplTest {
         UUID id = UUID.randomUUID();
         when(responseRepo.findById(id)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.getById(id))
+        assertThatThrownBy(() -> service.getById(id, "ja"))
                 .isInstanceOf(RuntimeException.class);
     }
 
@@ -104,7 +120,7 @@ class IssueResponseServiceImplTest {
     void getByTicketIdMissing() {
         when(ticketRepo.findById(ticketId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.getByTicketId(ticketId))
+        assertThatThrownBy(() -> service.getByTicketId(ticketId, "ja"))
                 .isInstanceOf(RuntimeException.class);
     }
 }

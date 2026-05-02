@@ -1,22 +1,34 @@
 package com.isums.issueservice.services;
 
+import com.google.protobuf.Timestamp;
+import com.isums.assetservice.grpc.AssetEventDto;
+import com.isums.assetservice.grpc.AssetImageDto;
+import com.isums.assetservice.grpc.AssetItemDto;
+import com.isums.houseservice.grpc.HouseResponse;
 import com.isums.issueservice.domains.dtos.CreateIssueRequest;
 import com.isums.issueservice.domains.dtos.IssueImageDto;
+import com.isums.issueservice.domains.dtos.IssueQuoteDto;
+import com.isums.issueservice.domains.dtos.IssueTicketDetailDto;
 import com.isums.issueservice.domains.dtos.IssueTicketDto;
 import com.isums.issueservice.domains.entities.IssueHistory;
 import com.isums.issueservice.domains.entities.IssueImage;
+import com.isums.issueservice.domains.entities.IssueQuote;
 import com.isums.issueservice.domains.entities.IssueTicket;
 import com.isums.issueservice.domains.enums.IssueStatus;
 import com.isums.issueservice.domains.enums.IssueType;
 import com.isums.issueservice.domains.enums.JobAction;
 import com.isums.issueservice.domains.events.JobEvent;
+import com.isums.issueservice.domains.events.QuoteCashPaymentConfirmedEvent;
 import com.isums.issueservice.exceptions.NotFoundException;
+import com.isums.issueservice.infrastructures.grpcs.AssetClientsGrpc;
+import com.isums.issueservice.infrastructures.grpcs.HouseClientsGrpc;
 import com.isums.issueservice.infrastructures.grpcs.UserClientsGrpc;
 import com.isums.issueservice.infrastructures.abstracts.IssueTicketService;
 import com.isums.issueservice.infrastructures.kafka.JobEventProducer;
 import com.isums.issueservice.infrastructures.mappers.IssueMapper;
 import com.isums.issueservice.infrastructures.repositories.IssueHistoryRepository;
 import com.isums.issueservice.infrastructures.repositories.IssueImageRepository;
+import com.isums.issueservice.infrastructures.repositories.IssueQuoteRepository;
 import com.isums.issueservice.infrastructures.repositories.IssueTicketRepository;
 import com.isums.userservice.grpc.UserResponse;
 import common.paginations.cache.CachedPageService;
@@ -27,7 +39,10 @@ import common.paginations.specifications.SpecificationBuilder;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -36,6 +51,7 @@ import tools.jackson.core.type.TypeReference;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -47,10 +63,16 @@ public class IssueTicketServiceImpl implements IssueTicketService {
     private final IssueHistoryRepository issueHistoryRepository;
     private final IssueMapper issueMapper;
     private final UserClientsGrpc userClientsGrpc;
+    private final HouseClientsGrpc houseClientsGrpc;
+    private final AssetClientsGrpc assetClientsGrpc;
     private final S3ServiceImpl s3;
     private final IssueImageRepository issueImageRepository;
+    private final IssueQuoteRepository issueQuoteRepository;
     private final JobEventProducer jobEventProducer;
+    private final KafkaTemplate<String, Object> kafka;
     private final CachedPageService cachedPageService;
+    private final CacheManager cacheManager;
+    private final TranslationAutoFillService translationAutoFillService;
 
     private static final String PAGE_NS = "issues";
     private static final Duration PAGE_TTL = Duration.ofMinutes(60);
@@ -66,7 +88,9 @@ public class IssueTicketServiceImpl implements IssueTicketService {
                     .assetId(request.assetId())
                     .type(request.type())
                     .title(request.title())
+                    .titleTranslations(translationAutoFillService.complete(request.title()))
                     .description(request.description())
+                    .descriptionTranslations(translationAutoFillService.complete(request.description()))
                     .status(IssueStatus.CREATED)
                     .createdAt(Instant.now())
                     .build();
@@ -81,12 +105,13 @@ public class IssueTicketServiceImpl implements IssueTicketService {
                     .build();
 
             issueHistoryRepository.save(history);
-            cachedPageService.evictAll(PAGE_NS);
+            evictIssuePageCache();
 
             if (created.getType() == IssueType.REPAIR) {
 
                 JobEvent event = JobEvent.builder()
                         .referenceId(created.getId())
+                        .tenantId(created.getTenantId())
                         .houseId(created.getHouseId())
                         .referenceType("ISSUE")
                         .action(JobAction.JOB_CREATED)
@@ -95,7 +120,7 @@ public class IssueTicketServiceImpl implements IssueTicketService {
                 jobEventProducer.publishJobCreated(event);
             }
 
-            return issueMapper.toDto(created);
+            return toIssueTicketDto(created, new java.util.HashMap<>(), List.of());
 
         } catch (Exception ex) {
             throw new RuntimeException("Can't create ticket" + ex.getMessage());
@@ -103,85 +128,79 @@ public class IssueTicketServiceImpl implements IssueTicketService {
     }
 
     @Override
+    @Transactional
     public List<IssueTicketDto> getTenantIssues(String tenantId) {
         try{
             UserResponse user = userClientsGrpc.getUserIdAndRoleByKeyCloakId(tenantId);
             List<IssueTicket> tickets = issueTicketRepository.findByTenantIdOrderByCreatedAtDesc(UUID.fromString(user.getId()));
-            return issueMapper.toDtos(tickets);
+            return toIssueTicketDtos(tickets);
         } catch (Exception ex) {
             throw new RuntimeException("Can't get ticket by tenantId " + ex.getMessage());
         }
     }
 
     @Override
+    @Transactional
     public List<IssueTicketDto> getByStaffId(String staffId) {
         try{
             UserResponse user = userClientsGrpc.getUserIdAndRoleByKeyCloakId(staffId);
             List<IssueTicket> tickets = issueTicketRepository.findByAssignedStaffIdOrderByCreatedAtDesc(UUID.fromString(user.getId()));
-            return issueMapper.toDtos(tickets);
+            return toIssueTicketDtos(tickets);
         } catch (Exception ex) {
             throw new RuntimeException("Can't get ticket by staff " + ex.getMessage());
         }
     }
 
     @Override
-    public IssueTicketDto getIssueById(UUID id) {
+    public IssueTicketDetailDto getIssueById(UUID id) {
        try{
            IssueTicket ticket = issueTicketRepository.findById(id)
                    .orElseThrow(() -> new RuntimeException("Ticket not found"));
 
-           String staffName = null;
-           String staffPhone = null;
-           String tenantPhone = null;
+           UserResponse staff = resolveUser(ticket.getAssignedStaffId(), new java.util.HashMap<>());
+           UserResponse tenant = resolveUser(ticket.getTenantId(), new java.util.HashMap<>());
+           HouseResponse house = resolveHouse(ticket.getHouseId());
+           AssetItemDto asset = resolveAsset(ticket.getHouseId(), ticket.getAssetId());
+           List<IssueImageDto> images = getIssueImages(ticket.getId());
 
-           if (ticket.getAssignedStaffId() != null) {
-               var user = userClientsGrpc.getUser(ticket.getAssignedStaffId().toString());
-               staffName = user.getName();
-               staffPhone = user.getPhoneNumber();
-           }
-
-           if(ticket.getTenantId() != null){
-               var user = userClientsGrpc.getUser(ticket.getTenantId().toString());
-               tenantPhone = user.getPhoneNumber();
-           }
-           return new IssueTicketDto(
+           return new IssueTicketDetailDto(
                    ticket.getId(),
                    ticket.getTenantId(),
-                   tenantPhone,
+                   normalize(tenant != null ? tenant.getPhoneNumber() : null),
                    ticket.getHouseId(),
                    ticket.getAssetId(),
                    ticket.getAssignedStaffId(),
-                   staffName,
-                   staffPhone,
+                   normalize(staff != null ? staff.getName() : null),
+                   normalize(staff != null ? staff.getPhoneNumber() : null),
                    ticket.getSlotId(),
                    ticket.getStartTime(),
                    ticket.getEndTime(),
                    ticket.getType(),
                    ticket.getStatus(),
-                   ticket.getTitle(),
-                   ticket.getDescription(),
+                   resolveLocalized(ticket.getTitle(), ticket.getTitleTranslations()),
+                   resolveLocalized(ticket.getDescription(), ticket.getDescriptionTranslations()),
                    ticket.getCreatedAt(),
-                   ticket.getImages().stream()
-                           .map(img -> new IssueImageDto(
-                                   img.getId(),
-                                   img.getKey(),
-                                   img.getCreatedAt()
-                           ))
-                           .toList());
+                   images,
+                   toUserSummary(tenant),
+                   toUserSummary(staff),
+                   toHouseSummary(house),
+                   toAssetSummary(asset));
        } catch (Exception ex) {
            throw new RuntimeException("Can't get ticket by id" + ex.getMessage());
        }
     }
 
     @Override
+    @Transactional
     public PageResponse<IssueTicketDto> getAll(PageRequest request) {
-        return cachedPageService.getOrLoad(PAGE_NS, request, new TypeReference<>() {
+        return cachedPageService.getOrLoad(PAGE_NS + ":" + common.i18n.TranslationMap.currentLanguage(), request, new TypeReference<>() {
                 },
                 () -> loadPage(request)
         );
     }
 
     @Override
+    @Transactional
     public IssueTicketDto updateStatus(UUID id, IssueStatus newStatus) {
         try{
             IssueTicket ticket = issueTicketRepository.findById(id)
@@ -193,18 +212,124 @@ public class IssueTicketServiceImpl implements IssueTicketService {
 
             ticket.setStatus(newStatus);
 
-            IssueTicket saved = issueTicketRepository.save(ticket);
+            IssueTicket saved = issueTicketRepository.saveAndFlush(ticket);
+            IssueTicket persisted = issueTicketRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Ticket not found after update"));
             log.error("🔥 UPDATE STATUS SUCCESS ticketId={} NOW={}",
                     id,
-                    saved.getStatus()
+                    persisted.getStatus()
             );
 
-            saveHistory(saved, "STATUS_" + newStatus.name());
-            cachedPageService.evictAll(PAGE_NS);
-            return issueMapper.toDto(saved);
+            if (persisted.getStatus() == IssueStatus.DONE) {
+                markSlotDone(persisted);
+            }
+
+            saveHistory(persisted, "STATUS_" + newStatus.name());
+            evictIssuePageCache();
+            return toIssueTicketDto(persisted, new java.util.HashMap<>(), List.of());
 
         }  catch (Exception ex) {
             throw new RuntimeException("Can't update ticket status" + ex.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional
+    public IssueTicketDto markRepairCompleted(UUID id) {
+        try {
+            IssueTicket ticket = issueTicketRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Ticket not found"));
+
+            validateTransition(ticket.getStatus(), IssueStatus.WAITING_STAFF_COMPLETION);
+
+            ticket.setStatus(IssueStatus.WAITING_STAFF_COMPLETION);
+            IssueTicket saved = issueTicketRepository.save(ticket);
+
+            saveHistory(saved, "REPAIR_COMPLETED");
+            evictIssuePageCache();
+            return toIssueTicketDto(saved, new java.util.HashMap<>(), List.of());
+        } catch (Exception ex) {
+            throw new RuntimeException("Can't mark repair completed " + ex.getMessage());
+        }
+    }
+
+    @Deprecated
+    public IssueTicketDto choosePaymentMethod(UUID id, com.isums.issueservice.domains.enums.PaymentMethod method) {
+        try {
+            IssueTicket ticket = issueTicketRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Ticket not found"));
+
+            if (ticket.getStatus() != IssueStatus.WAITING_CASH_PAYMENT &&
+                    ticket.getStatus() != IssueStatus.WAITING_STAFF_COMPLETION) {
+                throw new RuntimeException("Ticket must be WAITING_CASH_PAYMENT or WAITING_STAFF_COMPLETION");
+            }
+
+            List<IssueQuote> quotes = issueQuoteRepository.findByIssueTicketIdOrderByCreatedAtDesc(id);
+            if (quotes == null || quotes.isEmpty()) {
+                throw new RuntimeException("Quote not found");
+            }
+
+            IssueQuote latestQuote = quotes.get(0);
+            if (latestQuote.getStatus() != com.isums.issueservice.domains.enums.QuoteStatus.APPROVED) {
+                throw new RuntimeException("Quote is not approved");
+            }
+
+            if (method == com.isums.issueservice.domains.enums.PaymentMethod.BANK_TRANSFER) {
+                ticket.setStatus(IssueStatus.WAITING_PAYMENT);
+                saveHistory(ticket, "TENANT_SELECTED_BANK_TRANSFER");
+            } else if (method == com.isums.issueservice.domains.enums.PaymentMethod.CASH) {
+                ticket.setStatus(IssueStatus.WAITING_CASH_PAYMENT);
+                saveHistory(ticket, "TENANT_SELECTED_CASH");
+            } else {
+                throw new RuntimeException("Unsupported payment method");
+            }
+
+            IssueTicket saved = issueTicketRepository.save(ticket);
+            evictIssuePageCache();
+            return toIssueTicketDto(saved, new java.util.HashMap<>(), List.of());
+        } catch (Exception ex) {
+            throw new RuntimeException("Can't choose payment method " + ex.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional
+    public IssueTicketDto confirmCashPayment(UUID id) {
+        try {
+            IssueTicket ticket = issueTicketRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Ticket not found"));
+
+            if (ticket.getStatus() != IssueStatus.WAITING_CASH_PAYMENT) {
+                throw new RuntimeException("Ticket must be WAITING_CASH_PAYMENT");
+            }
+
+            List<IssueQuote> quotes = issueQuoteRepository.findByIssueTicketIdOrderByCreatedAtDesc(id);
+            if (quotes == null || quotes.isEmpty()) {
+                throw new RuntimeException("Quote not found");
+            }
+            IssueQuote latestQuote = quotes.getFirst();
+
+            if (latestQuote.getStatus() != com.isums.issueservice.domains.enums.QuoteStatus.APPROVED) {
+                throw new RuntimeException("Quote is not approved");
+            }
+
+            ticket.setStatus(IssueStatus.WAITING_PAYMENT);
+            IssueTicket saved = issueTicketRepository.save(ticket);
+
+            kafka.send("quote-cash-payment-confirmed", QuoteCashPaymentConfirmedEvent.builder()
+                    .quoteId(latestQuote.getId())
+                    .issueId(ticket.getId())
+                    .tenantId(ticket.getTenantId())
+                    .amount(latestQuote.getTotalPrice())
+                    .txnNo("CASH-" + ticket.getId())
+                    .paidAt(Instant.now())
+                    .build());
+
+            saveHistory(saved, "CASH_PAYMENT_CONFIRMED");
+            evictIssuePageCache();
+            return toIssueTicketDto(saved, new java.util.HashMap<>(), List.of());
+        } catch (Exception ex) {
+            throw new RuntimeException("Can't confirm cash payment " + ex.getMessage());
         }
     }
 
@@ -224,6 +349,7 @@ public class IssueTicketServiceImpl implements IssueTicketService {
         issueTicketRepository.save(ticket);
 
         saveHistory(ticket,"JOB_SCHEDULED");
+        evictIssuePageCache();
     }
 
     @Override
@@ -238,6 +364,7 @@ public class IssueTicketServiceImpl implements IssueTicketService {
         IssueTicket saved = issueTicketRepository.save(ticket);
 
         saveHistory(saved, "RESCHEDULE");
+        evictIssuePageCache();
     }
 
     @Override
@@ -250,6 +377,7 @@ public class IssueTicketServiceImpl implements IssueTicketService {
         IssueTicket saved = issueTicketRepository.save(ticket);
 
         saveHistory(saved, "NEED_RESCHEDULE");
+        evictIssuePageCache();
     }
 
     @Override
@@ -267,16 +395,22 @@ public class IssueTicketServiceImpl implements IssueTicketService {
             IssueImage image = IssueImage.builder()
                     .issueTicket(ticket)
                     .key(key)
+                    .createdAt(Instant.now())
                     .build();
 
             issueImageRepository.save(image);
         });
+
+        evictIssueCaches(issueId);
     }
 
     @Override
     @Cacheable(value = "issueImages", key = "#issueId")
     public List<IssueImageDto> getIssueImages(UUID issueId) {
         List<IssueImage> images = issueImageRepository.findByIssueTicketId(issueId);
+        if (images == null || images.isEmpty()) {
+            return List.of();
+        }
 
         List<IssueImageDto> imageDto = new ArrayList<>();
         images.forEach(image ->{
@@ -293,6 +427,7 @@ public class IssueTicketServiceImpl implements IssueTicketService {
                 .orElseThrow(() -> new NotFoundException("House image not found"));
         s3.delete(image.getKey());
         issueImageRepository.delete(image);
+        evictIssueCaches(issueId);
     }
 
     @Override
@@ -309,6 +444,7 @@ public class IssueTicketServiceImpl implements IssueTicketService {
 
         issueTicketRepository.save(ticket);
         saveHistory(ticket,"Assign_Slot");
+        evictIssuePageCache();
     }
 
     @Override
@@ -326,6 +462,7 @@ public class IssueTicketServiceImpl implements IssueTicketService {
 
         issueTicketRepository.save(ticket);
         saveHistory(ticket,"WAITING_MANAGER_CONFIRM");
+        evictIssuePageCache();
     }
 
     public void markSlotDone(IssueTicket ticket) {
@@ -346,7 +483,11 @@ public class IssueTicketServiceImpl implements IssueTicketService {
         IssueHistory history = new IssueHistory();
 
         history.setIssueTicket(ticket);
-        history.setActorId(ticket.getAssignedStaffId());
+        UUID actorId = ticket.getAssignedStaffId();
+        if (actorId == null) {
+            actorId = ticket.getTenantId();
+        }
+        history.setActorId(actorId);
         history.setAction(action);
         history.setCreatedAt(Instant.now());
 
@@ -371,6 +512,7 @@ public class IssueTicketServiceImpl implements IssueTicketService {
 
             case IN_PROGRESS:
                 if (next != IssueStatus.WAITING_MANAGER_APPROVAL_QUOTE
+                        && next != IssueStatus.WAITING_STAFF_COMPLETION
                     && next != IssueStatus.DONE     // kieu sua 1 cai la het
                     && next != IssueStatus.CANCELLED) { // tenant k co o nha
                     throw new RuntimeException("Invalid transition");
@@ -378,14 +520,21 @@ public class IssueTicketServiceImpl implements IssueTicketService {
                 break;
 
             case WAITING_MANAGER_APPROVAL_QUOTE:
-                if (next != IssueStatus.WAITING_TENANT_APPROVAL_QUOTE &&
-                        next != IssueStatus.IN_PROGRESS
-                        && next != IssueStatus.CANCELLED) { // reject
+                if (next != IssueStatus.IN_PROGRESS &&
+                        next != IssueStatus.CANCELLED) { // reject
                     throw new RuntimeException("Invalid transition");
                 }
                 break;
 
-            case WAITING_TENANT_APPROVAL_QUOTE:
+            case WAITING_STAFF_COMPLETION:
+                if (next != IssueStatus.WAITING_CASH_PAYMENT &&
+                        next != IssueStatus.WAITING_PAYMENT &&
+                        next != IssueStatus.CANCELLED) {
+                    throw new RuntimeException("Invalid transition");
+                }
+                break;
+
+            case WAITING_CASH_PAYMENT:
                 if (next != IssueStatus.WAITING_PAYMENT &&
                         next != IssueStatus.DONE
                         && next != IssueStatus.CANCELLED) {
@@ -401,6 +550,18 @@ public class IssueTicketServiceImpl implements IssueTicketService {
 
             default:
                 throw new RuntimeException("Invalid transition");
+        }
+    }
+
+    private void evictIssuePageCache() {
+        cachedPageService.evictAll(PAGE_NS);
+    }
+
+    private void evictIssueCaches(UUID issueId) {
+        evictIssuePageCache();
+        Cache cache = cacheManager.getCache("issueImages");
+        if (cache != null) {
+            cache.evict(issueId);
         }
     }
 
@@ -439,35 +600,7 @@ public class IssueTicketServiceImpl implements IssueTicketService {
                 .build();
         var pageable = SpringPageConverter.toPageable(request);
         Page<IssueTicket> page = issueTicketRepository.findAll(spec, pageable);
-        List<IssueTicket> tickets = page.getContent();
-
-        List<IssueTicketDto> dtos = tickets.stream()
-                .map(ticket -> {
-                    IssueTicketDto dto = issueMapper.toDto(ticket);
-
-                    List<IssueImageDto> images = getIssueImages(ticket.getId());
-
-                    return new IssueTicketDto(
-                            dto.id(),
-                            dto.tenantId(),
-                            dto.tenantPhone(),
-                            dto.houseId(),
-                            dto.assetId(),
-                            dto.assignedStaffId(),
-                            dto.staffName(),
-                            dto.staffPhone(),
-                            dto.slotId(),
-                            dto.startTime(),
-                            dto.endTime(),
-                            dto.type(),
-                            dto.status(),
-                            dto.title(),
-                            dto.description(),
-                            dto.createdAt(),
-                            images
-                    );
-                })
-                .toList();
+        List<IssueTicketDto> dtos = toIssueTicketDtos(page.getContent());
 
         return PageResponse.of(
                 dtos,
@@ -477,5 +610,201 @@ public class IssueTicketServiceImpl implements IssueTicketService {
                 page.getNumber(),
                 page.getSize()
         );
+    }
+
+    private List<IssueTicketDto> toIssueTicketDtos(List<IssueTicket> tickets) {
+        java.util.Map<UUID, UserResponse> userCache = new java.util.HashMap<>();
+        return tickets.stream()
+                .map(ticket -> toIssueTicketDto(ticket, userCache, getIssueImages(ticket.getId())))
+                .toList();
+    }
+
+    private IssueTicketDto toIssueTicketDto(IssueTicket ticket, java.util.Map<UUID, UserResponse> userCache, List<IssueImageDto> images) {
+        UserResponse tenant = resolveUser(ticket.getTenantId(), userCache);
+        UserResponse staff = resolveUser(ticket.getAssignedStaffId(), userCache);
+
+        return new IssueTicketDto(
+                ticket.getId(),
+                ticket.getTenantId(),
+                normalize(tenant != null ? tenant.getPhoneNumber() : null),
+                ticket.getHouseId(),
+                ticket.getAssetId(),
+                ticket.getAssignedStaffId(),
+                normalize(staff != null ? staff.getName() : null),
+                normalize(staff != null ? staff.getPhoneNumber() : null),
+                ticket.getSlotId(),
+                ticket.getStartTime(),
+                ticket.getEndTime(),
+                ticket.getType(),
+                ticket.getStatus(),
+                resolveLocalized(ticket.getTitle(), ticket.getTitleTranslations()),
+                resolveLocalized(ticket.getDescription(), ticket.getDescriptionTranslations()),
+                ticket.getCreatedAt(),
+                images,
+                null,
+                null,
+                null,
+                null,
+                resolveLatestQuote(ticket)
+        );
+    }
+
+    private IssueQuoteDto resolveLatestQuote(IssueTicket ticket) {
+        if (ticket == null || ticket.getQuotes() == null || ticket.getQuotes().isEmpty()) {
+            return null;
+        }
+        return ticket.getQuotes().stream()
+                .filter(q -> q != null && q.getCreatedAt() != null)
+                .max(Comparator.comparing(IssueQuote::getCreatedAt))
+                .map(issueMapper::quote)
+                .orElse(null);
+    }
+
+    private UserResponse resolveUser(UUID userId, java.util.Map<UUID, UserResponse> userCache) {
+        if (userId == null) {
+            return null;
+        }
+        UserResponse cached = userCache.get(userId);
+        if (cached != null) {
+            return cached;
+        }
+        try {
+            UserResponse user = userClientsGrpc.getUser(userId.toString());
+            userCache.put(userId, user);
+            return user;
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private String normalize(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value;
+    }
+
+    private String resolveLocalized(String source, common.i18n.TranslationMap translations) {
+        if (translations == null || translations.getTranslations().isEmpty()) {
+            return source;
+        }
+        String resolved = translations.resolve();
+        return resolved != null && !resolved.isBlank() ? resolved : source;
+    }
+
+    private HouseResponse resolveHouse(UUID houseId) {
+        if (houseId == null) {
+            return null;
+        }
+        try {
+            return houseClientsGrpc.getHouseById(houseId);
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private AssetItemDto resolveAsset(UUID houseId, UUID assetId) {
+        if (houseId == null || assetId == null) {
+            return null;
+        }
+        try {
+            return assetClientsGrpc.getAssetItemsByHouseId(houseId).stream()
+                    .filter(asset -> assetId.toString().equals(asset.getId()))
+                    .findFirst()
+                    .orElse(null);
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private IssueTicketDetailDto.UserSummaryDto toUserSummary(UserResponse user) {
+        if (user == null || user.getId().isBlank()) {
+            return null;
+        }
+        return new IssueTicketDetailDto.UserSummaryDto(
+                parseUuid(user.getId()),
+                normalize(user.getName()),
+                normalize(user.getEmail()),
+                normalize(user.getIdentityNumber()),
+                user.getIsEnabled(),
+                normalize(user.getKeycloakId()),
+                normalize(user.getPhoneNumber()),
+                user.getRolesList().isEmpty() ? null : List.copyOf(user.getRolesList())
+        );
+    }
+
+    private IssueTicketDetailDto.HouseSummaryDto toHouseSummary(HouseResponse house) {
+        if (house == null || house.getId().isBlank()) {
+            return null;
+        }
+        return new IssueTicketDetailDto.HouseSummaryDto(
+                parseUuid(house.getId()),
+                normalize(house.getUserRentalId()),
+                normalize(house.getName()),
+                normalize(house.getAddress()),
+                normalize(house.getWard()),
+                normalize(house.getCommune()),
+                normalize(house.getCity()),
+                normalize(house.getDescription()),
+                house.getStatus().name(),
+                normalize(house.getRegionId())
+        );
+    }
+
+    private IssueTicketDetailDto.AssetSummaryDto toAssetSummary(AssetItemDto asset) {
+        if (asset == null || asset.getId().isBlank()) {
+            return null;
+        }
+        return new IssueTicketDetailDto.AssetSummaryDto(
+                parseUuid(asset.getId()),
+                parseUuid(asset.getHouseId()),
+                asset.hasCategory()
+                        ? new IssueTicketDetailDto.AssetCategorySummaryDto(
+                        parseUuid(asset.getCategory().getId()),
+                        normalize(asset.getCategory().getName()),
+                        asset.getCategory().getCompensationPercent(),
+                        normalize(asset.getCategory().getDescription()))
+                        : null,
+                normalize(asset.getDisplayName()),
+                normalize(asset.getSerialNumber()),
+                normalize(asset.getNfcId()),
+                asset.getConditionPercent(),
+                asset.getStatus().name(),
+                asset.getImagesList().stream().map(this::toAssetImageSummary).toList(),
+                asset.getEventsList().stream().map(this::toAssetEventSummary).toList()
+        );
+    }
+
+    private IssueTicketDetailDto.AssetImageSummaryDto toAssetImageSummary(AssetImageDto image) {
+        return new IssueTicketDetailDto.AssetImageSummaryDto(
+                parseUuid(image.getId()),
+                normalize(image.getImageUrl()),
+                normalize(image.getNote()),
+                toInstant(image.getCreatedAt())
+        );
+    }
+
+    private IssueTicketDetailDto.AssetEventSummaryDto toAssetEventSummary(AssetEventDto event) {
+        return new IssueTicketDetailDto.AssetEventSummaryDto(
+                parseUuid(event.getId()),
+                event.getEventType().name(),
+                normalize(event.getDescription()),
+                toInstant(event.getCreatedAt()),
+                normalize(event.getCreatedBy())
+        );
+    }
+
+    private UUID parseUuid(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return UUID.fromString(value);
+    }
+
+    private Instant toInstant(Timestamp timestamp) {
+        if (timestamp == null || (timestamp.getSeconds() == 0 && timestamp.getNanos() == 0)) {
+            return null;
+        }
+        return Instant.ofEpochSecond(timestamp.getSeconds(), timestamp.getNanos());
     }
 }

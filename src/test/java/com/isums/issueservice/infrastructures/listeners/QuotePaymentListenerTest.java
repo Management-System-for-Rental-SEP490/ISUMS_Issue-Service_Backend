@@ -5,9 +5,11 @@ import com.isums.issueservice.domains.entities.IssueQuote;
 import com.isums.issueservice.domains.entities.IssueTicket;
 import com.isums.issueservice.domains.enums.IssueStatus;
 import com.isums.issueservice.domains.events.QuotePaymentCompletedEvent;
+import com.isums.issueservice.infrastructures.abstracts.IssueTicketService;
 import com.isums.issueservice.infrastructures.repositories.IssueHistoryRepository;
 import com.isums.issueservice.infrastructures.repositories.IssueQuoteRepository;
 import com.isums.issueservice.infrastructures.repositories.IssueTicketRepository;
+import common.paginations.cache.CachedPageService;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -38,6 +40,8 @@ class QuotePaymentListenerTest {
     @Mock private IssueTicketRepository ticketRepo;
     @Mock private IssueHistoryRepository historyRepo;
     @Mock private ObjectMapper objectMapper;
+    @Mock private IssueTicketService issueTicketService;
+    @Mock private CachedPageService cachedPageService;
     @Mock private Acknowledgment ack;
 
     @InjectMocks private QuotePaymentListener listener;
@@ -57,7 +61,7 @@ class QuotePaymentListenerTest {
     }
 
     @Test
-    @DisplayName("transitions ticket WAITING_PAYMENT → DONE and saves history")
+    @DisplayName("transitions WAITING_PAYMENT to DONE and saves history")
     void happy() throws Exception {
         UUID quoteId = UUID.randomUUID();
         QuotePaymentCompletedEvent evt = event(quoteId);
@@ -73,12 +77,37 @@ class QuotePaymentListenerTest {
 
         assertThat(ticket.getStatus()).isEqualTo(IssueStatus.DONE);
         verify(ticketRepo).save(ticket);
+        verify(issueTicketService).markSlotDone(ticket);
         verify(historyRepo).save(any(IssueHistory.class));
+        verify(cachedPageService).evictAll("issues");
         verify(ack).acknowledge();
     }
 
     @Test
-    @DisplayName("idempotent — skip and ack when ticket already DONE")
+    @DisplayName("transitions WAITING_CASH_PAYMENT to DONE and saves history")
+    void happyCash() throws Exception {
+        UUID quoteId = UUID.randomUUID();
+        QuotePaymentCompletedEvent evt = event(quoteId);
+        IssueTicket ticket = IssueTicket.builder()
+                .id(UUID.randomUUID()).status(IssueStatus.WAITING_CASH_PAYMENT).build();
+        IssueQuote quote = IssueQuote.builder()
+                .id(quoteId).issueTicket(ticket).build();
+
+        when(objectMapper.readValue("v", QuotePaymentCompletedEvent.class)).thenReturn(evt);
+        when(quoteRepo.findById(quoteId)).thenReturn(Optional.of(quote));
+
+        listener.handleQuotePaymentCompleted(rec, ack);
+
+        assertThat(ticket.getStatus()).isEqualTo(IssueStatus.DONE);
+        verify(ticketRepo).save(ticket);
+        verify(issueTicketService).markSlotDone(ticket);
+        verify(historyRepo).save(any(IssueHistory.class));
+        verify(cachedPageService).evictAll("issues");
+        verify(ack).acknowledge();
+    }
+
+    @Test
+    @DisplayName("idempotent skip and ack when ticket already DONE")
     void alreadyDone() throws Exception {
         UUID quoteId = UUID.randomUUID();
         QuotePaymentCompletedEvent evt = event(quoteId);
@@ -97,7 +126,7 @@ class QuotePaymentListenerTest {
     }
 
     @Test
-    @DisplayName("skips-and-acks on unexpected ticket status (corrupt state guard)")
+    @DisplayName("skips and acks on unexpected ticket status")
     void wrongStatus() throws Exception {
         UUID quoteId = UUID.randomUUID();
         QuotePaymentCompletedEvent evt = event(quoteId);
@@ -115,11 +144,8 @@ class QuotePaymentListenerTest {
     }
 
     @Test
-    @DisplayName("swallows exception (logs only) — does NOT ack nor rethrow (known design quirk)")
+    @DisplayName("swallows exception and does not ack")
     void swallowsException() throws Exception {
-        // Listener catches Exception generically and neither acks nor rethrows → message
-        // remains uncommitted. This test documents current behaviour; consider restructuring
-        // to either ack or rethrow for predictable Kafka semantics.
         when(objectMapper.readValue(any(String.class), any(Class.class)))
                 .thenThrow(new RuntimeException("bad json"));
 

@@ -6,6 +6,9 @@ import com.isums.issueservice.domains.entities.QuoteBannerVersion;
 import com.isums.issueservice.infrastructures.mappers.IssueMapper;
 import com.isums.issueservice.infrastructures.repositories.QuoteBannerRepository;
 import com.isums.issueservice.infrastructures.repositories.QuoteBannerVersionRepository;
+import common.i18n.TranslationMap;
+import common.paginations.cache.CachedPageService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -13,6 +16,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
@@ -28,14 +33,26 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 @DisplayName("QuoteBannerServiceImpl")
 class QuoteBannerServiceImplTest {
 
     @Mock private QuoteBannerRepository bannerRepo;
     @Mock private QuoteBannerVersionRepository versionRepo;
     @Mock private IssueMapper mapper;
+    @Mock private CachedPageService cachedPageService;
+    @Mock private TranslationAutoFillService translationAutoFillService;
 
     @InjectMocks private QuoteBannerServiceImpl service;
+
+    @BeforeEach
+    void setUp() {
+        when(translationAutoFillService.complete(any()))
+                .thenAnswer(invocation -> {
+                    String text = invocation.getArgument(0, String.class);
+                    return TranslationMap.of(java.util.Map.of("vi", text, "en", text, "ja", text));
+                });
+    }
 
     @Nested
     @DisplayName("create")
@@ -58,6 +75,7 @@ class QuoteBannerServiceImplTest {
             assertThat(saved.getPrice()).isEqualByComparingTo(BigDecimal.valueOf(200_000));
             assertThat(saved.getEstimatedCost()).isEqualByComparingTo(BigDecimal.valueOf(150_000));
             assertThat(saved.getEffectiveFrom()).isNotNull();
+            verify(cachedPageService).evictAll("issues");
         }
     }
 
@@ -94,6 +112,7 @@ class QuoteBannerServiceImplTest {
             assertThat(newVersion.getPrice()).isEqualByComparingTo(BigDecimal.valueOf(250_000));
             assertThat(newVersion.getIsActive()).isTrue();
             assertThat(newVersion.getEstimatedCost()).isEqualByComparingTo(BigDecimal.valueOf(150_000));
+            verify(cachedPageService).evictAll("issues");
         }
 
         @Test

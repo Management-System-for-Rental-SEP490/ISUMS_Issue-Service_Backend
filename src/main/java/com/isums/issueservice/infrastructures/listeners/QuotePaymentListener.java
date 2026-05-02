@@ -4,14 +4,12 @@ import com.isums.issueservice.domains.entities.IssueHistory;
 import com.isums.issueservice.domains.entities.IssueQuote;
 import com.isums.issueservice.domains.entities.IssueTicket;
 import com.isums.issueservice.domains.enums.IssueStatus;
-import com.isums.issueservice.domains.enums.JobAction;
-import com.isums.issueservice.domains.events.JobEvent;
 import com.isums.issueservice.domains.events.QuotePaymentCompletedEvent;
 import com.isums.issueservice.infrastructures.abstracts.IssueTicketService;
-import com.isums.issueservice.infrastructures.kafka.JobEventProducer;
 import com.isums.issueservice.infrastructures.repositories.IssueHistoryRepository;
 import com.isums.issueservice.infrastructures.repositories.IssueQuoteRepository;
 import com.isums.issueservice.infrastructures.repositories.IssueTicketRepository;
+import common.paginations.cache.CachedPageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -32,8 +30,10 @@ public class QuotePaymentListener {
     private final IssueTicketRepository issueTicketRepository;
     private final IssueHistoryRepository issueHistoryRepository;
     private final ObjectMapper objectMapper;
-    private final JobEventProducer jobEventProducer;
     private final IssueTicketService issueTicketService;
+    private final CachedPageService cachedPageService;
+
+    private static final String PAGE_NS = "issues";
 
     @KafkaListener(topics = "quote-payment-completed", groupId = "issue-group")
     @Transactional
@@ -57,7 +57,8 @@ public class QuotePaymentListener {
                 return;
             }
 
-            if (ticket.getStatus() != IssueStatus.WAITING_PAYMENT) {
+            if (ticket.getStatus() != IssueStatus.WAITING_PAYMENT
+                    && ticket.getStatus() != IssueStatus.WAITING_CASH_PAYMENT) {
                 log.error("[Issue] Unexpected ticket status={} for quoteId={}. Skip to avoid corrupt state.",
                         ticket.getStatus(), event.getQuoteId());
                 ack.acknowledge();
@@ -76,6 +77,7 @@ public class QuotePaymentListener {
                     .createdAt(Instant.now())
                     .build();
             issueHistoryRepository.save(history);
+            cachedPageService.evictAll(PAGE_NS);
 
             log.info("[Issue] Ticket DONE after payment. ticketId={} quoteId={} txnNo={}",
                     ticket.getId(), event.getQuoteId(), event.getTxnNo());

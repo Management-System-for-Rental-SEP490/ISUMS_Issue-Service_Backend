@@ -10,6 +10,7 @@ import com.isums.issueservice.domains.entities.QuoteBanner;
 import com.isums.issueservice.domains.entities.QuoteBannerVersion;
 import com.isums.issueservice.domains.enums.IssueStatus;
 import com.isums.issueservice.domains.enums.QuoteStatus;
+import com.isums.issueservice.domains.events.IssueQuoteSubmittedEvent;
 import com.isums.issueservice.domains.events.QuoteInvoiceCreateEvent;
 import com.isums.issueservice.infrastructures.grpcs.UserClientsGrpc;
 import com.isums.issueservice.infrastructures.mappers.IssueMapper;
@@ -19,6 +20,8 @@ import com.isums.issueservice.infrastructures.repositories.IssueTicketRepository
 import com.isums.issueservice.infrastructures.repositories.MaterialItemRepository;
 import com.isums.issueservice.infrastructures.repositories.QuoteBannerVersionRepository;
 import com.isums.userservice.grpc.UserResponse;
+import common.i18n.TranslationMap;
+import common.paginations.cache.CachedPageService;
 import common.statics.Roles;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,6 +32,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.security.authentication.TestingAuthenticationToken;
@@ -44,12 +49,14 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 @DisplayName("IssueQuoteServiceImpl")
 class IssueQuoteServiceImplTest {
 
@@ -61,6 +68,8 @@ class IssueQuoteServiceImplTest {
     @Mock private QuoteBannerVersionRepository bannerVersionRepo;
     @Mock private MaterialItemRepository materialRepo;
     @Mock private KafkaTemplate<String, Object> kafka;
+    @Mock private CachedPageService cachedPageService;
+    @Mock private TranslationAutoFillService translationAutoFillService;
 
     @InjectMocks private IssueQuoteServiceImpl service;
 
@@ -73,6 +82,11 @@ class IssueQuoteServiceImplTest {
         ticketId = UUID.randomUUID();
         staffId = UUID.randomUUID();
         keycloakId = UUID.randomUUID().toString();
+        when(translationAutoFillService.complete(anyString()))
+                .thenAnswer(invocation -> {
+                    String text = invocation.getArgument(0, String.class);
+                    return TranslationMap.of(java.util.Map.of("vi", text, "en", text, "ja", text));
+                });
     }
 
     @AfterEach
@@ -91,16 +105,24 @@ class IssueQuoteServiceImplTest {
     class Create {
 
         @Test
-        @DisplayName("custom item: saves quote with total price + updates material item + transitions ticket")
+        @DisplayName("custom item: saves quote, updates ticket and emits issue.quote.submitted")
         void customItem() {
+            UUID houseId = UUID.randomUUID();
             IssueTicket ticket = IssueTicket.builder()
-                    .id(ticketId).status(IssueStatus.IN_PROGRESS).build();
+                    .id(ticketId)
+                    .houseId(houseId)
+                    .status(IssueStatus.IN_PROGRESS)
+                    .build();
             when(ticketRepo.findById(ticketId)).thenReturn(Optional.of(ticket));
-            when(materialRepo.findByName("Vòi nước")).thenReturn(Optional.empty());
-            when(quoteRepo.save(any(IssueQuote.class))).thenAnswer(a -> a.getArgument(0));
+            when(materialRepo.findByName("Sink")).thenReturn(Optional.empty());
+            when(quoteRepo.save(any(IssueQuote.class))).thenAnswer(a -> {
+                IssueQuote quote = a.getArgument(0);
+                quote.setId(UUID.randomUUID());
+                return quote;
+            });
 
             CreateQuoteRequest req = new CreateQuoteRequest(true, List.of(
-                    new QuoteItemRequest(null, "Vòi nước", "Inox",
+                    new QuoteItemRequest(null, "Sink", "Inox",
                             BigDecimal.valueOf(200_000), BigDecimal.valueOf(150_000))
             ));
 
@@ -116,23 +138,41 @@ class IssueQuoteServiceImplTest {
             assertThat(ticket.getStatus()).isEqualTo(IssueStatus.WAITING_MANAGER_APPROVAL_QUOTE);
             verify(materialRepo).save(any(MaterialItem.class));
             verify(historyRepo).save(any(IssueHistory.class));
+            verify(cachedPageService).evictAll("issues");
+
+            ArgumentCaptor<Object> eventCap = ArgumentCaptor.forClass(Object.class);
+            verify(kafka).send(eq("issue.quote.submitted"), any(), eventCap.capture());
+            IssueQuoteSubmittedEvent event = (IssueQuoteSubmittedEvent) eventCap.getValue();
+            assertThat(event.getIssueId()).isEqualTo(ticketId);
+            assertThat(event.getHouseId()).isEqualTo(houseId);
+            assertThat(event.getStaffId()).isEqualTo(staffId);
+            assertThat(event.getTotalPrice()).isEqualByComparingTo(BigDecimal.valueOf(200_000));
         }
 
         @Test
-        @DisplayName("banner item: pulls price + cost from current version")
+        @DisplayName("banner item: pulls price and cost from current version")
         void bannerItem() {
             UUID bannerId = UUID.randomUUID();
-            QuoteBanner banner = QuoteBanner.builder().id(bannerId).name("Thay vòi").build();
+            QuoteBanner banner = QuoteBanner.builder().id(bannerId).name("Replace sink").build();
             QuoteBannerVersion version = QuoteBannerVersion.builder()
-                    .banner(banner).price(BigDecimal.valueOf(250_000))
-                    .estimatedCost(BigDecimal.valueOf(180_000)).build();
+                    .banner(banner)
+                    .price(BigDecimal.valueOf(250_000))
+                    .estimatedCost(BigDecimal.valueOf(180_000))
+                    .build();
 
             IssueTicket ticket = IssueTicket.builder()
-                    .id(ticketId).status(IssueStatus.IN_PROGRESS).build();
+                    .id(ticketId)
+                    .houseId(UUID.randomUUID())
+                    .status(IssueStatus.IN_PROGRESS)
+                    .build();
             when(ticketRepo.findById(ticketId)).thenReturn(Optional.of(ticket));
             when(bannerVersionRepo.findCurrentVersion(eq(bannerId), any(Instant.class)))
                     .thenReturn(Optional.of(version));
-            when(quoteRepo.save(any(IssueQuote.class))).thenAnswer(a -> a.getArgument(0));
+            when(quoteRepo.save(any(IssueQuote.class))).thenAnswer(a -> {
+                IssueQuote quote = a.getArgument(0);
+                quote.setId(UUID.randomUUID());
+                return quote;
+            });
 
             CreateQuoteRequest req = new CreateQuoteRequest(false, List.of(
                     new QuoteItemRequest(bannerId, null, null, null, null)
@@ -146,10 +186,12 @@ class IssueQuoteServiceImplTest {
         }
 
         @Test
-        @DisplayName("rejects item with both bannerId AND itemName")
+        @DisplayName("rejects item with both bannerId and itemName")
         void bothBannerAndCustom() {
             IssueTicket ticket = IssueTicket.builder()
-                    .id(ticketId).status(IssueStatus.IN_PROGRESS).build();
+                    .id(ticketId)
+                    .status(IssueStatus.IN_PROGRESS)
+                    .build();
             when(ticketRepo.findById(ticketId)).thenReturn(Optional.of(ticket));
 
             CreateQuoteRequest req = new CreateQuoteRequest(false, List.of(
@@ -165,7 +207,9 @@ class IssueQuoteServiceImplTest {
         @DisplayName("rejects custom item missing name or price")
         void customMissingName() {
             IssueTicket ticket = IssueTicket.builder()
-                    .id(ticketId).status(IssueStatus.IN_PROGRESS).build();
+                    .id(ticketId)
+                    .status(IssueStatus.IN_PROGRESS)
+                    .build();
             when(ticketRepo.findById(ticketId)).thenReturn(Optional.of(ticket));
 
             CreateQuoteRequest req = new CreateQuoteRequest(false, List.of(
@@ -180,7 +224,9 @@ class IssueQuoteServiceImplTest {
         @DisplayName("rejects when ticket not IN_PROGRESS")
         void wrongStatus() {
             IssueTicket ticket = IssueTicket.builder()
-                    .id(ticketId).status(IssueStatus.CREATED).build();
+                    .id(ticketId)
+                    .status(IssueStatus.CREATED)
+                    .build();
             when(ticketRepo.findById(ticketId)).thenReturn(Optional.of(ticket));
 
             CreateQuoteRequest req = new CreateQuoteRequest(false, List.of(
@@ -195,7 +241,9 @@ class IssueQuoteServiceImplTest {
         @DisplayName("rejects empty items list")
         void emptyItems() {
             IssueTicket ticket = IssueTicket.builder()
-                    .id(ticketId).status(IssueStatus.IN_PROGRESS).build();
+                    .id(ticketId)
+                    .status(IssueStatus.IN_PROGRESS)
+                    .build();
             when(ticketRepo.findById(ticketId)).thenReturn(Optional.of(ticket));
 
             assertThatThrownBy(() -> service.createQuote(ticketId, staffId.toString(),
@@ -205,122 +253,159 @@ class IssueQuoteServiceImplTest {
     }
 
     @Nested
-    @DisplayName("updateQuoteStatus (manager/tenant approval flow)")
+    @DisplayName("updateQuoteStatus")
     class UpdateStatus {
 
         @Test
-        @DisplayName("MANAGER approve + isTenantFault=false → APPROVED + ticket DONE")
+        @DisplayName("MANAGER approve + isTenantFault=false -> APPROVED + IN_PROGRESS")
         void managerApproveFree() {
             withJwt();
             UUID quoteId = UUID.randomUUID();
             IssueTicket ticket = IssueTicket.builder()
-                    .id(ticketId).status(IssueStatus.WAITING_MANAGER_APPROVAL_QUOTE).build();
+                    .id(ticketId)
+                    .status(IssueStatus.WAITING_MANAGER_APPROVAL_QUOTE)
+                    .build();
             IssueQuote quote = IssueQuote.builder()
-                    .id(quoteId).issueTicket(ticket).status(QuoteStatus.WAITING_MANAGER_APPROVAL)
-                    .isTenantFault(false).build();
+                    .id(quoteId)
+                    .issueTicket(ticket)
+                    .status(QuoteStatus.WAITING_MANAGER_APPROVAL)
+                    .isTenantFault(false)
+                    .build();
             when(quoteRepo.findById(quoteId)).thenReturn(Optional.of(quote));
             when(userGrpc.getUserIdAndRoleByKeyCloakId(keycloakId)).thenReturn(
-                    UserResponse.newBuilder().setId(UUID.randomUUID().toString())
-                            .addRoles(Roles.MANAGER).build());
+                    UserResponse.newBuilder()
+                            .setId(UUID.randomUUID().toString())
+                            .addRoles(Roles.MANAGER)
+                            .build());
 
             service.updateQuoteStatus(quoteId, QuoteStatus.APPROVED);
 
             assertThat(quote.getStatus()).isEqualTo(QuoteStatus.APPROVED);
-            assertThat(ticket.getStatus()).isEqualTo(IssueStatus.DONE);
+            assertThat(ticket.getStatus()).isEqualTo(IssueStatus.IN_PROGRESS);
         }
 
         @Test
-        @DisplayName("MANAGER approve + isTenantFault=true → WAITING_TENANT_APPROVAL")
+        @DisplayName("MANAGER approve emits quote invoice event and moves ticket IN_PROGRESS")
         void managerApproveTenantFault() {
             withJwt();
             UUID quoteId = UUID.randomUUID();
+            UUID quoteTenantId = UUID.randomUUID();
+            UUID quoteHouseId = UUID.randomUUID();
             IssueTicket ticket = IssueTicket.builder()
-                    .id(ticketId).status(IssueStatus.WAITING_MANAGER_APPROVAL_QUOTE).build();
+                    .id(ticketId)
+                    .tenantId(quoteTenantId)
+                    .houseId(quoteHouseId)
+                    .status(IssueStatus.WAITING_MANAGER_APPROVAL_QUOTE)
+                    .build();
             IssueQuote quote = IssueQuote.builder()
-                    .id(quoteId).issueTicket(ticket).status(QuoteStatus.WAITING_MANAGER_APPROVAL)
-                    .isTenantFault(true).build();
+                    .id(quoteId)
+                    .issueTicket(ticket)
+                    .status(QuoteStatus.WAITING_MANAGER_APPROVAL)
+                    .isTenantFault(true)
+                    .totalPrice(BigDecimal.valueOf(450_000))
+                    .build();
             when(quoteRepo.findById(quoteId)).thenReturn(Optional.of(quote));
             when(userGrpc.getUserIdAndRoleByKeyCloakId(keycloakId)).thenReturn(
-                    UserResponse.newBuilder().setId(UUID.randomUUID().toString())
-                            .addRoles(Roles.MANAGER).build());
+                    UserResponse.newBuilder()
+                            .setId(UUID.randomUUID().toString())
+                            .addRoles(Roles.MANAGER)
+                            .build());
 
             service.updateQuoteStatus(quoteId, QuoteStatus.APPROVED);
 
-            assertThat(quote.getStatus()).isEqualTo(QuoteStatus.WAITING_TENANT_APPROVAL);
-            assertThat(ticket.getStatus()).isEqualTo(IssueStatus.WAITING_TENANT_APPROVAL_QUOTE);
+            assertThat(quote.getStatus()).isEqualTo(QuoteStatus.APPROVED);
+            assertThat(ticket.getStatus()).isEqualTo(IssueStatus.IN_PROGRESS);
+
+            ArgumentCaptor<Object> eventCap = ArgumentCaptor.forClass(Object.class);
+            verify(kafka).send(eq("quote-invoice-create"), eventCap.capture());
+            QuoteInvoiceCreateEvent event = (QuoteInvoiceCreateEvent) eventCap.getValue();
+            assertThat(event.getQuoteId()).isEqualTo(quoteId);
+            assertThat(event.getIssueId()).isEqualTo(ticketId);
+            assertThat(event.getTenantId()).isEqualTo(quoteTenantId);
+            assertThat(event.getHouseId()).isEqualTo(quoteHouseId);
+            assertThat(event.getTotalPrice()).isEqualByComparingTo(BigDecimal.valueOf(450_000));
+            verify(cachedPageService).evictAll("issues");
         }
 
         @Test
-        @DisplayName("MANAGER reject → ticket back to IN_PROGRESS")
+        @DisplayName("MANAGER reject -> ticket back to IN_PROGRESS")
         void managerReject() {
             withJwt();
             UUID quoteId = UUID.randomUUID();
             IssueTicket ticket = IssueTicket.builder()
-                    .id(ticketId).status(IssueStatus.WAITING_MANAGER_APPROVAL_QUOTE).build();
+                    .id(ticketId)
+                    .status(IssueStatus.WAITING_MANAGER_APPROVAL_QUOTE)
+                    .build();
             IssueQuote quote = IssueQuote.builder()
-                    .id(quoteId).issueTicket(ticket).status(QuoteStatus.WAITING_MANAGER_APPROVAL)
-                    .isTenantFault(true).build();
+                    .id(quoteId)
+                    .issueTicket(ticket)
+                    .status(QuoteStatus.WAITING_MANAGER_APPROVAL)
+                    .isTenantFault(true)
+                    .build();
             when(quoteRepo.findById(quoteId)).thenReturn(Optional.of(quote));
             when(userGrpc.getUserIdAndRoleByKeyCloakId(keycloakId)).thenReturn(
-                    UserResponse.newBuilder().setId(UUID.randomUUID().toString())
-                            .addRoles(Roles.MANAGER).build());
+                    UserResponse.newBuilder()
+                            .setId(UUID.randomUUID().toString())
+                            .addRoles(Roles.MANAGER)
+                            .build());
 
             service.updateQuoteStatus(quoteId, QuoteStatus.REJECTED);
 
             assertThat(quote.getStatus()).isEqualTo(QuoteStatus.REJECTED);
             assertThat(ticket.getStatus()).isEqualTo(IssueStatus.IN_PROGRESS);
+            verify(cachedPageService).evictAll("issues");
         }
 
         @Test
-        @DisplayName("TENANT approve → WAITING_PAYMENT + publish quote-invoice-create Kafka event")
-        void tenantApprove() {
+        @DisplayName("TENANT approve is not allowed anymore")
+        void tenantApproveNotAllowed() {
             withJwt();
             UUID quoteId = UUID.randomUUID();
-            UUID tenantId = UUID.randomUUID();
-            UUID houseId = UUID.randomUUID();
             IssueTicket ticket = IssueTicket.builder()
-                    .id(ticketId).tenantId(tenantId).houseId(houseId)
-                    .status(IssueStatus.WAITING_TENANT_APPROVAL_QUOTE).build();
+                    .id(ticketId)
+                    .status(IssueStatus.WAITING_MANAGER_APPROVAL_QUOTE)
+                    .build();
             IssueQuote quote = IssueQuote.builder()
-                    .id(quoteId).issueTicket(ticket).status(QuoteStatus.WAITING_TENANT_APPROVAL)
-                    .totalPrice(BigDecimal.valueOf(500_000)).isTenantFault(true).build();
+                    .id(quoteId)
+                    .issueTicket(ticket)
+                    .status(QuoteStatus.WAITING_MANAGER_APPROVAL)
+                    .isTenantFault(true)
+                    .build();
             when(quoteRepo.findById(quoteId)).thenReturn(Optional.of(quote));
             when(userGrpc.getUserIdAndRoleByKeyCloakId(keycloakId)).thenReturn(
-                    UserResponse.newBuilder().setId(UUID.randomUUID().toString())
-                            .addRoles(Roles.TENANT).build());
+                    UserResponse.newBuilder()
+                            .setId(UUID.randomUUID().toString())
+                            .addRoles(Roles.TENANT)
+                            .build());
 
-            service.updateQuoteStatus(quoteId, QuoteStatus.APPROVED);
-
-            assertThat(quote.getStatus()).isEqualTo(QuoteStatus.APPROVED);
-            assertThat(ticket.getStatus()).isEqualTo(IssueStatus.WAITING_PAYMENT);
-
-            ArgumentCaptor<Object> cap = ArgumentCaptor.forClass(Object.class);
-            verify(kafka).send(eq("quote-invoice-create"), cap.capture());
-            QuoteInvoiceCreateEvent event = (QuoteInvoiceCreateEvent) cap.getValue();
-            assertThat(event.getQuoteId()).isEqualTo(quoteId);
-            assertThat(event.getTenantId()).isEqualTo(tenantId);
-            assertThat(event.getTotalPrice()).isEqualByComparingTo(BigDecimal.valueOf(500_000));
+            assertThatThrownBy(() -> service.updateQuoteStatus(quoteId, QuoteStatus.APPROVED))
+                    .isInstanceOf(RuntimeException.class);
         }
 
         @Test
-        @DisplayName("TENANT reject → CANCELLED")
-        void tenantReject() {
+        @DisplayName("TENANT reject is not allowed anymore")
+        void tenantRejectNotAllowed() {
             withJwt();
             UUID quoteId = UUID.randomUUID();
             IssueTicket ticket = IssueTicket.builder()
-                    .id(ticketId).status(IssueStatus.WAITING_TENANT_APPROVAL_QUOTE).build();
+                    .id(ticketId)
+                    .status(IssueStatus.WAITING_MANAGER_APPROVAL_QUOTE)
+                    .build();
             IssueQuote quote = IssueQuote.builder()
-                    .id(quoteId).issueTicket(ticket).status(QuoteStatus.WAITING_TENANT_APPROVAL)
-                    .isTenantFault(true).build();
+                    .id(quoteId)
+                    .issueTicket(ticket)
+                    .status(QuoteStatus.WAITING_MANAGER_APPROVAL)
+                    .isTenantFault(true)
+                    .build();
             when(quoteRepo.findById(quoteId)).thenReturn(Optional.of(quote));
             when(userGrpc.getUserIdAndRoleByKeyCloakId(keycloakId)).thenReturn(
-                    UserResponse.newBuilder().setId(UUID.randomUUID().toString())
-                            .addRoles(Roles.TENANT).build());
+                    UserResponse.newBuilder()
+                            .setId(UUID.randomUUID().toString())
+                            .addRoles(Roles.TENANT)
+                            .build());
 
-            service.updateQuoteStatus(quoteId, QuoteStatus.REJECTED);
-
-            assertThat(quote.getStatus()).isEqualTo(QuoteStatus.REJECTED);
-            assertThat(ticket.getStatus()).isEqualTo(IssueStatus.CANCELLED);
+            assertThatThrownBy(() -> service.updateQuoteStatus(quoteId, QuoteStatus.REJECTED))
+                    .isInstanceOf(RuntimeException.class);
         }
     }
 }

@@ -1,5 +1,7 @@
 package com.isums.issueservice.domains.entities;
 
+import common.i18n.TranslationMap;
+import common.i18n.TranslationMapConverter;
 import com.isums.issueservice.domains.enums.IssueStatus;
 import com.isums.issueservice.domains.enums.IssueType;
 import jakarta.persistence.*;
@@ -53,8 +55,16 @@ public class IssueTicket {
 
     private String title;
 
+    @Column(name = "title_translations", columnDefinition = "text")
+    @Convert(converter = TranslationMapConverter.class)
+    private TranslationMap titleTranslations;
+
     @Column(columnDefinition = "text")
     private String description;
+
+    @Column(name = "description_translations", columnDefinition = "text")
+    @Convert(converter = TranslationMapConverter.class)
+    private TranslationMap descriptionTranslations;
 
     private Instant createdAt;
 

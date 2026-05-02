@@ -53,8 +53,8 @@ public class IssueTicketController {
     }
 
     @GetMapping("/{ticketId}")
-    public ApiResponse<IssueTicketDto> getById(@PathVariable UUID ticketId){
-        IssueTicketDto res = issueTicketService.getIssueById(ticketId);
+    public ApiResponse<IssueTicketDetailDto> getById(@PathVariable UUID ticketId){
+        IssueTicketDetailDto res = issueTicketService.getIssueById(ticketId);
         return ApiResponses.ok(res,"Get all tickets successfully");
     }
 
@@ -63,6 +63,18 @@ public class IssueTicketController {
     ) {
         IssueTicketDto res = issueTicketService.updateStatus(id, status);
         return ApiResponses.ok(res, "Update status success");
+    }
+
+    @PostMapping("/{id}/repair-complete")
+    public ApiResponse<IssueTicketDto> markRepairCompleted(@PathVariable UUID id) {
+        IssueTicketDto res = issueTicketService.markRepairCompleted(id);
+        return ApiResponses.ok(res, "Mark repair completed success");
+    }
+
+    @PostMapping("/{id}/cash-payment/confirm")
+    public ApiResponse<IssueTicketDto> confirmCashPayment(@PathVariable UUID id) {
+        IssueTicketDto res = issueTicketService.confirmCashPayment(id);
+        return ApiResponses.ok(res, "Confirm cash payment success");
     }
 
     @PostMapping(value = "/{issueId}/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

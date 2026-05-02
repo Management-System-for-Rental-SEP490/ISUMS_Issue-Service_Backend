@@ -11,6 +11,8 @@ import com.isums.issueservice.infrastructures.mappers.IssueMapper;
 import com.isums.issueservice.infrastructures.repositories.IssueExecutionRepository;
 import com.isums.issueservice.infrastructures.repositories.IssueHistoryRepository;
 import com.isums.issueservice.infrastructures.repositories.IssueTicketRepository;
+import common.i18n.TranslationMap;
+import common.paginations.cache.CachedPageService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,6 +27,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -38,6 +42,9 @@ class IssueExecutionServiceImplTest {
     @Mock private IssueMapper mapper;
     @Mock private IssueHistoryRepository historyRepo;
     @Mock private AssetConditionProducer assetConditionProducer;
+    @Mock private CachedPageService cachedPageService;
+    @Mock private TranslationAutoFillService translationAutoFillService;
+    @Mock private TranslationLocaleSupport translationLocaleSupport;
 
     @InjectMocks private IssueExecutionServiceImpl service;
 
@@ -53,6 +60,11 @@ class IssueExecutionServiceImplTest {
 
         when(ticketRepo.findById(issueId)).thenReturn(Optional.of(ticket));
         when(execRepo.save(any(IssueExecution.class))).thenAnswer(a -> a.getArgument(0));
+        when(translationAutoFillService.complete(anyString()))
+                .thenAnswer(invocation -> {
+                    String text = invocation.getArgument(0, String.class);
+                    return TranslationMap.of(java.util.Map.of("vi", text, "en", text, "ja", text));
+                });
 
         service.createExecution(issueId, staffId.toString(),
                 new CreateExecutionRequest(houseId, assetId, 80, "ok"));
@@ -69,6 +81,7 @@ class IssueExecutionServiceImplTest {
         assertThat(eventCap.getValue().getConditionScore()).isEqualTo(80);
 
         verify(historyRepo).save(any(IssueHistory.class));
+        verify(cachedPageService).evictAll("issues");
     }
 
     @Test
@@ -104,7 +117,7 @@ class IssueExecutionServiceImplTest {
         UUID id = UUID.randomUUID();
         when(execRepo.findById(id)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.getById(id))
+        assertThatThrownBy(() -> service.getById(id, "ja"))
                 .isInstanceOf(RuntimeException.class);
     }
 }

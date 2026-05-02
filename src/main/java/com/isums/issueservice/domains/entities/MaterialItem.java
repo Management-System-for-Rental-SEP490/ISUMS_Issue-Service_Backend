@@ -1,5 +1,7 @@
 package com.isums.issueservice.domains.entities;
 
+import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
@@ -29,6 +31,10 @@ public class MaterialItem {
     private UUID id;
 
     private String name;
+
+    @Column(name = "name_translations", columnDefinition = "text")
+    @Convert(converter = com.isums.common.i18n.TranslationMapConverter.class)
+    private com.isums.common.i18n.TranslationMap nameTranslations;
 
     private BigDecimal lastCost;
 

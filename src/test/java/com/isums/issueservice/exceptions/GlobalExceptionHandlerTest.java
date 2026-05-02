@@ -1,11 +1,14 @@
 package com.isums.issueservice.exceptions;
 
 import com.isums.issueservice.domains.dtos.ApiResponse;
+import common.paginations.dtos.PageRequestParams;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.BeanPropertyBindingResult;
+import org.springframework.validation.BindException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -40,6 +43,21 @@ class GlobalExceptionHandlerTest {
         ResponseEntity<ApiResponse<Void>> res = handler.handleGeneric(new Exception("boom"));
         assertThat(res.getStatusCode().value()).isEqualTo(500);
         assertThat(res.getBody().getErrors().get(0).getCode()).isEqualTo("INTERNAL_ERROR");
+    }
+
+    @Test
+    @DisplayName("handleBindException returns 400 for model attribute validation errors")
+    void bindException() {
+        BeanPropertyBindingResult bindingResult = new BeanPropertyBindingResult(new PageRequestParams(), "pageRequestParams");
+        bindingResult.rejectValue("page", "Min", "must be greater than or equal to 1");
+
+        ResponseEntity<ApiResponse<Void>> res =
+                handler.handleBindException(new BindException(bindingResult));
+
+        assertThat(res.getStatusCode().value()).isEqualTo(400);
+        assertThat(res.getBody().getMessage()).isEqualTo("Validation failed");
+        assertThat(res.getBody().getErrors().get(0).getCode()).isEqualTo("BAD_REQUEST");
+        assertThat(res.getBody().getErrors().get(0).getMessage()).isEqualTo("page: must be greater than or equal to 1");
     }
 
     @Test

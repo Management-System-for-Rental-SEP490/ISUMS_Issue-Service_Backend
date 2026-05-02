@@ -2,6 +2,7 @@ package com.isums.issueservice.infrastructures.abstracts;
 
 import com.isums.issueservice.domains.dtos.CreateIssueRequest;
 import com.isums.issueservice.domains.dtos.IssueImageDto;
+import com.isums.issueservice.domains.dtos.IssueTicketDetailDto;
 import com.isums.issueservice.domains.dtos.IssueTicketDto;
 import com.isums.issueservice.domains.entities.IssueTicket;
 import com.isums.issueservice.domains.enums.IssueStatus;
@@ -16,9 +17,11 @@ import java.util.UUID;
 
 public interface IssueTicketService {
     IssueTicketDto createIssue(UUID tenantId, CreateIssueRequest request);
+    IssueTicketDto markRepairCompleted(UUID ticketId);
+    IssueTicketDto confirmCashPayment(UUID ticketId);
     List<IssueTicketDto> getTenantIssues(String tenantId);
     List<IssueTicketDto> getByStaffId(String staffId);
-    IssueTicketDto getIssueById(UUID id);
+    IssueTicketDetailDto getIssueById(UUID id);
     PageResponse<IssueTicketDto> getAll(PageRequest request);
     IssueTicketDto updateStatus(UUID id , IssueStatus newStatus);
     void markScheduled(JobEvent event);

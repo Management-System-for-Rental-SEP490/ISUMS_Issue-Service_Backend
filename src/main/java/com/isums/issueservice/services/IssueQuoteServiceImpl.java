@@ -5,12 +5,14 @@ import com.isums.issueservice.domains.dtos.IssueQuoteDto;
 import com.isums.issueservice.domains.entities.*;
 import com.isums.issueservice.domains.enums.IssueStatus;
 import com.isums.issueservice.domains.enums.QuoteStatus;
+import com.isums.issueservice.domains.events.IssueQuoteSubmittedEvent;
 import com.isums.issueservice.domains.events.QuoteInvoiceCreateEvent;
 import com.isums.issueservice.infrastructures.abstracts.IssueQuoteService;
 import com.isums.issueservice.infrastructures.grpcs.UserClientsGrpc;
 import com.isums.issueservice.infrastructures.mappers.IssueMapper;
 import com.isums.issueservice.infrastructures.repositories.*;
 import com.isums.userservice.grpc.UserResponse;
+import common.paginations.cache.CachedPageService;
 import common.statics.Roles;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +37,10 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
     private final QuoteBannerVersionRepository quoteBannerVersionRepository;
     private final MaterialItemRepository materialItemRepository;
     private final KafkaTemplate<String, Object> kafka;
+    private final CachedPageService cachedPageService;
+    private final TranslationAutoFillService translationAutoFillService;
+
+    private static final String PAGE_NS = "issues";
 
     @Override
     public IssueQuoteDto createQuote(UUID issueId, String staffId, CreateQuoteRequest req) {
@@ -76,6 +82,7 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
                                     .quote(quote)
                                     .bannerVersion(version)
                                     .itemName(version.getBanner().getName())
+                                    .itemNameTranslations(version.getBanner().getNameTranslations())
                                     .price(version.getPrice())
                                     .cost(version.getEstimatedCost())
                                     .build();
@@ -101,7 +108,9 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
                         return QuoteItem.builder()
                                 .quote(quote)
                                 .itemName(i.itemName())
+                                .itemNameTranslations(translationAutoFillService.complete(i.itemName()))
                                 .description(i.description())
+                                .descriptionTranslations(translationAutoFillService.complete(i.description()))
                                 .price(i.price())
                                 .cost(cost)
                                 .build();
@@ -122,6 +131,19 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
             issueTicketRepository.save(ticket);
 
             saveHistory(ticket, UUID.fromString(staffId), "QUOTE_CREATED");
+            evictIssuePageCache();
+
+            kafka.send("issue.quote.submitted",
+                    created.getId().toString(),
+                    IssueQuoteSubmittedEvent.builder()
+                            .messageId(UUID.randomUUID().toString())
+                            .issueId(ticket.getId())
+                            .quoteId(created.getId())
+                            .houseId(ticket.getHouseId())
+                            .staffId(UUID.fromString(staffId))
+                            .totalPrice(created.getTotalPrice())
+                            .submittedAt(Instant.now())
+                            .build());
 
             return issueMapper.quote(created);
         } catch (Exception ex) {
@@ -183,6 +205,7 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
 
             IssueTicket ticket = quote.getIssueTicket();
             QuoteStatus status = quote.getStatus();
+            boolean shouldCreateInvoice = false;
 
             UserResponse userProfile = userClientsGrpc
                     .getUserIdAndRoleByKeyCloakId(keycloakId);
@@ -193,19 +216,10 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
                 if (status == QuoteStatus.WAITING_MANAGER_APPROVAL) {
 
                     if (newStatus == QuoteStatus.APPROVED) {
-                        // hu hai do hao mon tu nhien
-                        if (!Boolean.TRUE.equals(quote.getIsTenantFault())) {
-                            quote.setStatus(QuoteStatus.APPROVED);
-                            ticket.setStatus(IssueStatus.DONE);
-
-                            saveHistory(ticket, userId, "MANAGER_APPROVED_FREE");
-                        } else {
-                            // do nguoi thue lam hu
-                            quote.setStatus(QuoteStatus.WAITING_TENANT_APPROVAL);
-                            ticket.setStatus(IssueStatus.WAITING_TENANT_APPROVAL_QUOTE);
-
-                            saveHistory(ticket, userId, "MANAGER_APPROVED_QUOTE");
-                        }
+                        quote.setStatus(QuoteStatus.APPROVED);
+                        saveHistory(ticket, userId, "MANAGER_APPROVED_QUOTE");
+                        ticket.setStatus(IssueStatus.IN_PROGRESS);
+                        shouldCreateInvoice = true;
                     } else if (newStatus == QuoteStatus.REJECTED) {
                         quote.setStatus(QuoteStatus.REJECTED);
                         ticket.setStatus(IssueStatus.IN_PROGRESS);
@@ -214,37 +228,26 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
                     } else {
                         throw new RuntimeException("Invalid action");
                     }
-                }
-            } else if (roles.contains(Roles.TENANT)) {
-                if (status == QuoteStatus.WAITING_TENANT_APPROVAL) {
-
-                    if (newStatus == QuoteStatus.APPROVED) {
-                        quote.setStatus(QuoteStatus.APPROVED);
-                        ticket.setStatus(IssueStatus.WAITING_PAYMENT);
-                        saveHistory(ticket, userId, "TENANT_APPROVED_QUOTE");
-
-                        kafka.send("quote-invoice-create", QuoteInvoiceCreateEvent.builder()
-                                .quoteId(quote.getId())
-                                .issueId(ticket.getId())
-                                .tenantId(ticket.getTenantId())
-                                .houseId(ticket.getHouseId())
-                                .totalPrice(quote.getTotalPrice())
-                                .build());
-
-                    } else if (newStatus == QuoteStatus.REJECTED) {
-                        quote.setStatus(QuoteStatus.REJECTED);
-                        ticket.setStatus(IssueStatus.CANCELLED);
-                        saveHistory(ticket, userId, "TENANT_REJECTED_QUOTE");
-                    } else {
-                        throw new RuntimeException("Invalid action");
-                    }
                 } else {
                     throw new RuntimeException("Invalid state");
                 }
+            } else {
+                throw new RuntimeException("Manager role required");
             }
 
             issueQuoteRepository.save(quote);
             issueTicketRepository.save(ticket);
+            evictIssuePageCache();
+
+            if (shouldCreateInvoice) {
+                kafka.send("quote-invoice-create", QuoteInvoiceCreateEvent.builder()
+                        .quoteId(quote.getId())
+                        .issueId(ticket.getId())
+                        .tenantId(ticket.getTenantId())
+                        .houseId(ticket.getHouseId())
+                        .totalPrice(quote.getTotalPrice())
+                        .build());
+            }
 
             return issueMapper.quote(quote);
 
@@ -263,5 +266,9 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
         history.setCreatedAt(Instant.now());
 
         issueHistoryRepository.save(history);
+    }
+
+    private void evictIssuePageCache() {
+        cachedPageService.evictAll(PAGE_NS);
     }
 }

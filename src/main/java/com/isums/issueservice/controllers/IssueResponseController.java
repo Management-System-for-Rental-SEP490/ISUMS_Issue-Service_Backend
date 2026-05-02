@@ -21,6 +21,7 @@ import java.util.UUID;
 public class IssueResponseController {
     private final IssueResponseService issueResponseService;
     private final UserClientsGrpc userClientsGrpc;
+    private final com.isums.issueservice.services.TranslationLocaleSupport translationLocaleSupport;
 
     @PostMapping("/{ticketId}")
     public ApiResponse<IssueResponseDto> answer(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID ticketId, @RequestBody AnswerRequest req){
@@ -30,14 +31,25 @@ public class IssueResponseController {
     }
 
     @GetMapping
-    public ApiResponse<List<IssueResponseDto>> getAll(){
-        List<IssueResponseDto> res = issueResponseService.getAll();
+    public ApiResponse<List<IssueResponseDto>> getAll(@RequestHeader(value = "Accept-Language", required = false) String acceptLanguage,
+                                                      @RequestParam(required = false) String locale){
+        List<IssueResponseDto> res = issueResponseService.getAll(translationLocaleSupport.resolvePreferred(acceptLanguage, locale));
         return ApiResponses.ok(res,"Get all responses successfully");
     }
 
     @GetMapping("/ticket/{ticketId}")
-    public ApiResponse<IssueResponseDto> getByTicketId(@PathVariable UUID ticketId){
-        IssueResponseDto res = issueResponseService.getByTicketId(ticketId);
+    public ApiResponse<IssueResponseDto> getByTicketId(@PathVariable UUID ticketId,
+                                                       @RequestHeader(value = "Accept-Language", required = false) String acceptLanguage,
+                                                       @RequestParam(required = false) String locale){
+        IssueResponseDto res = issueResponseService.getByTicketId(ticketId, translationLocaleSupport.resolvePreferred(acceptLanguage, locale));
         return ApiResponses.ok(res,"get response by ticket successfully");
+    }
+
+    @GetMapping("/{id}")
+    public ApiResponse<IssueResponseDto> getById(@PathVariable UUID id,
+                                                 @RequestHeader(value = "Accept-Language", required = false) String acceptLanguage,
+                                                 @RequestParam(required = false) String locale){
+        IssueResponseDto res = issueResponseService.getById(id, translationLocaleSupport.resolvePreferred(acceptLanguage, locale));
+        return ApiResponses.ok(res,"get response by id successfully");
     }
 }

@@ -27,6 +27,11 @@ public record IssueTicketDto(
         String title,
         String description,
         Instant createdAt,
-        List<IssueImageDto> images
+        List<IssueImageDto> images,
+        IssueTicketDetailDto.UserSummaryDto tenant,
+        IssueTicketDetailDto.UserSummaryDto assignedStaff,
+        IssueTicketDetailDto.HouseSummaryDto house,
+        IssueTicketDetailDto.AssetSummaryDto asset,
+        IssueQuoteDto quote
 ) {
 }
