@@ -1,5 +1,7 @@
 package com.isums.issueservice.domains.entities;
 
+import common.i18n.TranslationMap;
+import common.i18n.TranslationMapConverter;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -31,6 +33,13 @@ public class IssueResponse {
 
     @Column(columnDefinition = "text")
     private String content;
+
+    @Column(name = "content_translations", columnDefinition = "text")
+    @Convert(converter = TranslationMapConverter.class)
+    private TranslationMap contentTranslations;
+
+    @Column(name = "source_language", length = 16)
+    private String sourceLanguage;
 
     private Instant createdAt;
 }

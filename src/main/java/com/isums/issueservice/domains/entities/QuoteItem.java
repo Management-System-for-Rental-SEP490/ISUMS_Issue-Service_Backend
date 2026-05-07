@@ -1,5 +1,7 @@
 package com.isums.issueservice.domains.entities;
 
+import common.i18n.TranslationMap;
+import common.i18n.TranslationMapConverter;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -33,7 +35,15 @@ public class QuoteItem {
 
     private String itemName;
 
+    @Column(name = "item_name_translations", columnDefinition = "text")
+    @Convert(converter = TranslationMapConverter.class)
+    private TranslationMap itemNameTranslations;
+
     private String description;
+
+    @Column(name = "description_translations", columnDefinition = "text")
+    @Convert(converter = TranslationMapConverter.class)
+    private TranslationMap descriptionTranslations;
 
     private BigDecimal price;
 

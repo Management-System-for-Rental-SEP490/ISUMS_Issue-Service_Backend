@@ -6,7 +6,11 @@ import com.isums.issueservice.domains.enums.IssueType;
 import com.isums.issueservice.infrastructures.grpcs.UserClientsGrpc;
 import com.isums.issueservice.infrastructures.abstracts.IssueTicketService;
 import com.isums.userservice.grpc.UserResponse;
+import common.paginations.dtos.PageRequestParams;
+import common.paginations.dtos.PageResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -31,9 +35,9 @@ public class IssueTicketController {
     }
 
     @GetMapping
-    public ApiResponse<List<IssueTicketDto>> getAll(@RequestParam(required = false) IssueStatus status,@RequestParam(required = false) IssueType type){
-        List<IssueTicketDto> res = issueTicketService.getAll(status,type);
-        return ApiResponses.ok(res,"Get all tickets successfully");
+    public ApiResponse<PageResponse<IssueTicketDto>> GetAllHouses(@ParameterObject @Valid @ModelAttribute PageRequestParams params) {
+        var res = issueTicketService.getAll(params.toPageRequest());
+        return ApiResponses.ok(res, "Success to get all issues");
     }
 
     @GetMapping("/tenant")
@@ -49,8 +53,8 @@ public class IssueTicketController {
     }
 
     @GetMapping("/{ticketId}")
-    public ApiResponse<IssueTicketDto> getById(@PathVariable UUID ticketId){
-        IssueTicketDto res = issueTicketService.getIssueById(ticketId);
+    public ApiResponse<IssueTicketDetailDto> getById(@PathVariable UUID ticketId){
+        IssueTicketDetailDto res = issueTicketService.getIssueById(ticketId);
         return ApiResponses.ok(res,"Get all tickets successfully");
     }
 
@@ -59,6 +63,18 @@ public class IssueTicketController {
     ) {
         IssueTicketDto res = issueTicketService.updateStatus(id, status);
         return ApiResponses.ok(res, "Update status success");
+    }
+
+    @PostMapping("/{id}/repair-complete")
+    public ApiResponse<IssueTicketDto> markRepairCompleted(@PathVariable UUID id) {
+        IssueTicketDto res = issueTicketService.markRepairCompleted(id);
+        return ApiResponses.ok(res, "Mark repair completed success");
+    }
+
+    @PostMapping("/{id}/cash-payment/confirm")
+    public ApiResponse<IssueTicketDto> confirmCashPayment(@PathVariable UUID id) {
+        IssueTicketDto res = issueTicketService.confirmCashPayment(id);
+        return ApiResponses.ok(res, "Confirm cash payment success");
     }
 
     @PostMapping(value = "/{issueId}/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

@@ -7,8 +7,12 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.BindException;
+import org.springframework.validation.BindingResult;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 
 import java.util.List;
 
@@ -44,6 +48,30 @@ public class GlobalExceptionHandler {
         );
 
         return ResponseEntity.status(res.getStatusCode()).body(res);
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodArgumentNotValid(MethodArgumentNotValidException ex) {
+        return badRequestValidation(ex.getBindingResult());
+    }
+
+    @ExceptionHandler(BindException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBindException(BindException ex) {
+        return badRequestValidation(ex.getBindingResult());
+    }
+
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleHandlerMethodValidation(HandlerMethodValidationException ex) {
+        ApiResponse<Void> res = ApiResponses.fail(
+                HttpStatus.BAD_REQUEST,
+                "Validation failed",
+                List.of(ApiError.builder()
+                        .code("BAD_REQUEST")
+                        .message(ex.getMessage())
+                        .build())
+        );
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(res);
     }
 
     @ExceptionHandler(Exception.class)
@@ -87,5 +115,27 @@ public class GlobalExceptionHandler {
                         .build())
         );
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(res);
+    }
+
+    private ResponseEntity<ApiResponse<Void>> badRequestValidation(BindingResult bindingResult) {
+        List<ApiError> errors = bindingResult.getFieldErrors().stream()
+                .map(fieldError -> ApiError.builder()
+                        .code("BAD_REQUEST")
+                        .message(fieldError.getField() + ": " + fieldError.getDefaultMessage())
+                        .build())
+                .toList();
+
+        ApiResponse<Void> res = ApiResponses.fail(
+                HttpStatus.BAD_REQUEST,
+                "Validation failed",
+                errors.isEmpty()
+                        ? List.of(ApiError.builder()
+                        .code("BAD_REQUEST")
+                        .message("Validation failed")
+                        .build())
+                        : errors
+        );
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(res);
     }
 }

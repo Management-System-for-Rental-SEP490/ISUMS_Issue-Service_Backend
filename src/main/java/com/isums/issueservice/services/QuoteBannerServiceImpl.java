@@ -9,6 +9,7 @@ import com.isums.issueservice.infrastructures.abstracts.QuoteBannerService;
 import com.isums.issueservice.infrastructures.mappers.IssueMapper;
 import com.isums.issueservice.infrastructures.repositories.QuoteBannerRepository;
 import com.isums.issueservice.infrastructures.repositories.QuoteBannerVersionRepository;
+import common.paginations.cache.CachedPageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -23,12 +24,17 @@ public class QuoteBannerServiceImpl implements QuoteBannerService {
     private final QuoteBannerRepository quoteBannerRepository;
     private final QuoteBannerVersionRepository quoteBannerVersionRepository;
     private final IssueMapper issueMapper;
+    private final CachedPageService cachedPageService;
+    private final TranslationAutoFillService translationAutoFillService;
+
+    private static final String PAGE_NS = "issues";
 
     @Override
     public BannerDto create(CreateBannerRequest req) {
         try{
             QuoteBanner banner = QuoteBanner.builder()
                     .name(req.name())
+                    .nameTranslations(translationAutoFillService.complete(req.name()))
                     .isActive(true)
                     .createdAt(Instant.now())
                     .build();
@@ -45,6 +51,7 @@ public class QuoteBannerServiceImpl implements QuoteBannerService {
                     .build();
 
             quoteBannerVersionRepository.save(version);
+            cachedPageService.evictAll(PAGE_NS);
 
             return issueMapper.banner(banner,version.getPrice(),version.getEstimatedCost());
         } catch (Exception ex) {
@@ -102,6 +109,7 @@ public class QuoteBannerServiceImpl implements QuoteBannerService {
                     .build();
 
             quoteBannerVersionRepository.save(newVersion);
+            cachedPageService.evictAll(PAGE_NS);
 
             return issueMapper.banner(banner, newPrice,estimatedCost);
         } catch (Exception ex) {

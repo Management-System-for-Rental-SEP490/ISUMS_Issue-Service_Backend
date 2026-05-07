@@ -6,6 +6,7 @@ import lombok.Data;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 
@@ -25,7 +26,12 @@ public record IssueTicketDto(
         IssueStatus status,
         String title,
         String description,
-        Instant createdAt
-
+        Instant createdAt,
+        List<IssueImageDto> images,
+        IssueTicketDetailDto.UserSummaryDto tenant,
+        IssueTicketDetailDto.UserSummaryDto assignedStaff,
+        IssueTicketDetailDto.HouseSummaryDto house,
+        IssueTicketDetailDto.AssetSummaryDto asset,
+        IssueQuoteDto quote
 ) {
 }

@@ -2,10 +2,14 @@ package com.isums.issueservice.infrastructures.abstracts;
 
 import com.isums.issueservice.domains.dtos.CreateIssueRequest;
 import com.isums.issueservice.domains.dtos.IssueImageDto;
+import com.isums.issueservice.domains.dtos.IssueTicketDetailDto;
 import com.isums.issueservice.domains.dtos.IssueTicketDto;
+import com.isums.issueservice.domains.entities.IssueTicket;
 import com.isums.issueservice.domains.enums.IssueStatus;
 import com.isums.issueservice.domains.enums.IssueType;
 import com.isums.issueservice.domains.events.JobEvent;
+import common.paginations.dtos.PageRequest;
+import common.paginations.dtos.PageResponse;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -13,10 +17,12 @@ import java.util.UUID;
 
 public interface IssueTicketService {
     IssueTicketDto createIssue(UUID tenantId, CreateIssueRequest request);
+    IssueTicketDto markRepairCompleted(UUID ticketId);
+    IssueTicketDto confirmCashPayment(UUID ticketId);
     List<IssueTicketDto> getTenantIssues(String tenantId);
     List<IssueTicketDto> getByStaffId(String staffId);
-    IssueTicketDto getIssueById(UUID id);
-    List<IssueTicketDto> getAll(IssueStatus status, IssueType type);
+    IssueTicketDetailDto getIssueById(UUID id);
+    PageResponse<IssueTicketDto> getAll(PageRequest request);
     IssueTicketDto updateStatus(UUID id , IssueStatus newStatus);
     void markScheduled(JobEvent event);
     void markRescheduled(JobEvent event);
@@ -26,4 +32,5 @@ public interface IssueTicketService {
     void deleteIssueImage(UUID issueId, UUID imageId);
     void markSlot(JobEvent event);
     void markConfirmSlot(JobEvent event);
+    void markSlotDone(IssueTicket ticket);
 }

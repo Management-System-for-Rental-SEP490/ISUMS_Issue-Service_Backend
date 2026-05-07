@@ -8,7 +8,7 @@ import java.util.UUID;
 
 public interface IssueResponseService {
     IssueResponseDto answer(UUID ticketId, String staffId, AnswerRequest req);
-    List<IssueResponseDto> getAll();
-    IssueResponseDto getByTicketId(UUID ticketId);
-    IssueResponseDto getById(UUID Id);
+    List<IssueResponseDto> getAll(String locale);
+    IssueResponseDto getByTicketId(UUID ticketId, String locale);
+    IssueResponseDto getById(UUID Id, String locale);
 }
