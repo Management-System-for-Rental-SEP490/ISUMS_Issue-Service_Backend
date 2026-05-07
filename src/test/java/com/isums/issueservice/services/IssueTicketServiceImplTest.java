@@ -49,6 +49,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -518,19 +519,50 @@ class IssueTicketServiceImplTest {
         }
 
         @Test
-        @DisplayName("idempotent — returns early if already SCHEDULED")
-        void idempotent() {
+        @DisplayName("idempotent - returns early when already synchronized")
+        void idempotentWhenAlreadySynchronized() {
             IssueTicket t = ticket(IssueStatus.SCHEDULED, IssueType.REPAIR);
-            t.setAssignedStaffId(UUID.randomUUID());
-            t.setSlotId(UUID.randomUUID());
+            UUID staffId = UUID.randomUUID();
+            UUID slotId = UUID.randomUUID();
+            LocalDateTime start = LocalDateTime.of(2026, 5, 5, 9, 45);
+            LocalDateTime end = LocalDateTime.of(2026, 5, 5, 10, 45);
+            t.setAssignedStaffId(staffId);
+            t.setSlotId(slotId);
+            t.setStartTime(start);
+            t.setEndTime(end);
             JobEvent event = JobEvent.builder().referenceId(ticketId)
-                    .staffId(UUID.randomUUID()).slotId(UUID.randomUUID()).build();
+                    .staffId(staffId).slotId(slotId).startTime(start).endTime(end).build();
             when(ticketRepo.findById(ticketId)).thenReturn(Optional.of(t));
 
             service.markScheduled(event);
 
             verify(ticketRepo, never()).save(any());
             verify(historyRepo, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("updates schedule details when ticket is already SCHEDULED")
+        void updatesScheduleDetailsWhenAlreadyScheduled() {
+            IssueTicket t = ticket(IssueStatus.SCHEDULED, IssueType.REPAIR);
+            t.setAssignedStaffId(null);
+            t.setSlotId(null);
+            LocalDateTime start = LocalDateTime.of(2026, 5, 5, 9, 45);
+            LocalDateTime end = LocalDateTime.of(2026, 5, 5, 10, 45);
+            JobEvent event = JobEvent.builder().referenceId(ticketId)
+                    .staffId(UUID.randomUUID()).slotId(UUID.randomUUID())
+                    .startTime(start).endTime(end).build();
+            when(ticketRepo.findById(ticketId)).thenReturn(Optional.of(t));
+
+            service.markScheduled(event);
+
+            assertThat(t.getStatus()).isEqualTo(IssueStatus.SCHEDULED);
+            assertThat(t.getAssignedStaffId()).isEqualTo(event.getStaffId());
+            assertThat(t.getSlotId()).isEqualTo(event.getSlotId());
+            assertThat(t.getStartTime()).isEqualTo(start);
+            assertThat(t.getEndTime()).isEqualTo(end);
+            verify(ticketRepo).save(t);
+            verify(historyRepo).save(any(IssueHistory.class));
+            verify(cachedPageService).evictAll("issues");
         }
     }
 

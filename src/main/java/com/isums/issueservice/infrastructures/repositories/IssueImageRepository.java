@@ -8,4 +8,6 @@ import java.util.UUID;
 
 public interface IssueImageRepository extends JpaRepository<IssueImage, UUID> {
     List<IssueImage> findByIssueTicketId(UUID ticketId);
+
+    List<IssueImage> findByIssueTicketIdIn(List<UUID> ticketIds);
 }

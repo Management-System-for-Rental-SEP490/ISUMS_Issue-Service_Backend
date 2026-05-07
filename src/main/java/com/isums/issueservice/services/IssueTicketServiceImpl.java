@@ -17,6 +17,7 @@ import com.isums.issueservice.domains.entities.IssueTicket;
 import com.isums.issueservice.domains.enums.IssueStatus;
 import com.isums.issueservice.domains.enums.IssueType;
 import com.isums.issueservice.domains.enums.JobAction;
+import com.isums.issueservice.domains.enums.QuoteStatus;
 import com.isums.issueservice.domains.events.JobEvent;
 import com.isums.issueservice.domains.events.QuoteCashPaymentConfirmedEvent;
 import com.isums.issueservice.exceptions.NotFoundException;
@@ -41,7 +42,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
@@ -53,6 +56,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -80,6 +84,10 @@ public class IssueTicketServiceImpl implements IssueTicketService {
 
     @Transactional
     @Override
+    @Caching(evict = {
+            @CacheEvict(value = "staff-tickets", allEntries = true),
+            @CacheEvict(value = "tenant-tickets", allEntries = true)
+    })
     public IssueTicketDto createIssue(UUID tenantId, CreateIssueRequest request) {
         try{
             IssueTicket ticket = IssueTicket.builder()
@@ -120,7 +128,7 @@ public class IssueTicketServiceImpl implements IssueTicketService {
                 jobEventProducer.publishJobCreated(event);
             }
 
-            return toIssueTicketDto(created, new java.util.HashMap<>(), List.of());
+            return toIssueTicketDto(created, new java.util.HashMap<>(), List.of(), null);
 
         } catch (Exception ex) {
             throw new RuntimeException("Can't create ticket" + ex.getMessage());
@@ -129,6 +137,7 @@ public class IssueTicketServiceImpl implements IssueTicketService {
 
     @Override
     @Transactional
+    @Cacheable(value = "tenant-tickets", key = "#tenantId")
     public List<IssueTicketDto> getTenantIssues(String tenantId) {
         try{
             UserResponse user = userClientsGrpc.getUserIdAndRoleByKeyCloakId(tenantId);
@@ -141,6 +150,7 @@ public class IssueTicketServiceImpl implements IssueTicketService {
 
     @Override
     @Transactional
+    @Cacheable(value = "staff-tickets", key = "#staffId")
     public List<IssueTicketDto> getByStaffId(String staffId) {
         try{
             UserResponse user = userClientsGrpc.getUserIdAndRoleByKeyCloakId(staffId);
@@ -157,11 +167,27 @@ public class IssueTicketServiceImpl implements IssueTicketService {
            IssueTicket ticket = issueTicketRepository.findById(id)
                    .orElseThrow(() -> new RuntimeException("Ticket not found"));
 
-           UserResponse staff = resolveUser(ticket.getAssignedStaffId(), new java.util.HashMap<>());
-           UserResponse tenant = resolveUser(ticket.getTenantId(), new java.util.HashMap<>());
-           HouseResponse house = resolveHouse(ticket.getHouseId());
-           AssetItemDto asset = resolveAsset(ticket.getHouseId(), ticket.getAssetId());
-           List<IssueImageDto> images = getIssueImages(ticket.getId());
+           java.util.Map<UUID, UserResponse> userCache = new java.util.concurrent.ConcurrentHashMap<>();
+           java.util.concurrent.CompletableFuture<UserResponse> staffFut = java.util.concurrent.CompletableFuture
+                   .supplyAsync(() -> resolveUser(ticket.getAssignedStaffId(), userCache));
+           java.util.concurrent.CompletableFuture<UserResponse> tenantFut = java.util.concurrent.CompletableFuture
+                   .supplyAsync(() -> resolveUser(ticket.getTenantId(), userCache));
+           java.util.concurrent.CompletableFuture<HouseResponse> houseFut = java.util.concurrent.CompletableFuture
+                   .supplyAsync(() -> resolveHouse(ticket.getHouseId()));
+           java.util.concurrent.CompletableFuture<AssetItemDto> assetFut = java.util.concurrent.CompletableFuture
+                   .supplyAsync(() -> resolveAsset(ticket.getHouseId(), ticket.getAssetId()));
+           java.util.concurrent.CompletableFuture<List<IssueImageDto>> imagesFut = java.util.concurrent.CompletableFuture
+                   .supplyAsync(() -> getIssueImages(ticket.getId()));
+
+           java.util.concurrent.CompletableFuture
+                   .allOf(staffFut, tenantFut, houseFut, assetFut, imagesFut)
+                   .join();
+
+           UserResponse staff = staffFut.join();
+           UserResponse tenant = tenantFut.join();
+           HouseResponse house = houseFut.join();
+           AssetItemDto asset = assetFut.join();
+           List<IssueImageDto> images = imagesFut.join();
 
            return new IssueTicketDetailDto(
                    ticket.getId(),
@@ -201,6 +227,10 @@ public class IssueTicketServiceImpl implements IssueTicketService {
 
     @Override
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "staff-tickets", allEntries = true),
+            @CacheEvict(value = "tenant-tickets", allEntries = true)
+    })
     public IssueTicketDto updateStatus(UUID id, IssueStatus newStatus) {
         try{
             IssueTicket ticket = issueTicketRepository.findById(id)
@@ -226,7 +256,7 @@ public class IssueTicketServiceImpl implements IssueTicketService {
 
             saveHistory(persisted, "STATUS_" + newStatus.name());
             evictIssuePageCache();
-            return toIssueTicketDto(persisted, new java.util.HashMap<>(), List.of());
+            return toIssueTicketDto(persisted, new java.util.HashMap<>(), List.of(), null);
 
         }  catch (Exception ex) {
             throw new RuntimeException("Can't update ticket status" + ex.getMessage());
@@ -240,14 +270,29 @@ public class IssueTicketServiceImpl implements IssueTicketService {
             IssueTicket ticket = issueTicketRepository.findById(id)
                     .orElseThrow(() -> new RuntimeException("Ticket not found"));
 
-            validateTransition(ticket.getStatus(), IssueStatus.WAITING_STAFF_COMPLETION);
+            IssueStatus nextStatus = IssueStatus.WAITING_STAFF_COMPLETION;
+            IssueQuote latestApprovedQuote = issueQuoteRepository.findByIssueTicketIdOrderByCreatedAtDesc(id)
+                    .stream()
+                    .filter(quote -> quote.getStatus() == QuoteStatus.APPROVED)
+                    .findFirst()
+                    .orElse(null);
+            if (latestApprovedQuote != null && Boolean.FALSE.equals(latestApprovedQuote.getIsTenantFault())) {
+                nextStatus = IssueStatus.DONE;
+            }
 
-            ticket.setStatus(IssueStatus.WAITING_STAFF_COMPLETION);
+            validateTransition(ticket.getStatus(), nextStatus);
+
+            ticket.setStatus(nextStatus);
             IssueTicket saved = issueTicketRepository.save(ticket);
+            if (saved.getStatus() == IssueStatus.DONE) {
+                markSlotDone(saved);
+            }
 
-            saveHistory(saved, "REPAIR_COMPLETED");
+            saveHistory(saved, saved.getStatus() == IssueStatus.DONE
+                    ? "REPAIR_COMPLETED_LANDLORD_FAULT"
+                    : "REPAIR_COMPLETED");
             evictIssuePageCache();
-            return toIssueTicketDto(saved, new java.util.HashMap<>(), List.of());
+            return toIssueTicketDto(saved, new java.util.HashMap<>(), List.of(), null);
         } catch (Exception ex) {
             throw new RuntimeException("Can't mark repair completed " + ex.getMessage());
         }
@@ -286,7 +331,7 @@ public class IssueTicketServiceImpl implements IssueTicketService {
 
             IssueTicket saved = issueTicketRepository.save(ticket);
             evictIssuePageCache();
-            return toIssueTicketDto(saved, new java.util.HashMap<>(), List.of());
+            return toIssueTicketDto(saved, new java.util.HashMap<>(), List.of(), null);
         } catch (Exception ex) {
             throw new RuntimeException("Can't choose payment method " + ex.getMessage());
         }
@@ -327,7 +372,7 @@ public class IssueTicketServiceImpl implements IssueTicketService {
 
             saveHistory(saved, "CASH_PAYMENT_CONFIRMED");
             evictIssuePageCache();
-            return toIssueTicketDto(saved, new java.util.HashMap<>(), List.of());
+            return toIssueTicketDto(saved, new java.util.HashMap<>(), List.of(), null);
         } catch (Exception ex) {
             throw new RuntimeException("Can't confirm cash payment " + ex.getMessage());
         }
@@ -338,17 +383,37 @@ public class IssueTicketServiceImpl implements IssueTicketService {
         IssueTicket ticket = issueTicketRepository.findById(event.getReferenceId())
                 .orElseThrow();
 
-        if(ticket.getStatus() == IssueStatus.SCHEDULED){
+        boolean wasScheduled = ticket.getStatus() == IssueStatus.SCHEDULED;
+        boolean changed = false;
+
+        if (!Objects.equals(ticket.getAssignedStaffId(), event.getStaffId())) {
+            ticket.setAssignedStaffId(event.getStaffId());
+            changed = true;
+        }
+        if (!Objects.equals(ticket.getSlotId(), event.getSlotId())) {
+            ticket.setSlotId(event.getSlotId());
+            changed = true;
+        }
+        if (!Objects.equals(ticket.getStartTime(), event.getStartTime())) {
+            ticket.setStartTime(event.getStartTime());
+            changed = true;
+        }
+        if (!Objects.equals(ticket.getEndTime(), event.getEndTime())) {
+            ticket.setEndTime(event.getEndTime());
+            changed = true;
+        }
+        if (!wasScheduled) {
+            ticket.setStatus(IssueStatus.SCHEDULED);
+            changed = true;
+        }
+
+        if (!changed) {
             return;
         }
 
-        ticket.setAssignedStaffId(event.getStaffId());
-        ticket.setSlotId(event.getSlotId());
-        ticket.setStatus(IssueStatus.SCHEDULED);
-
         issueTicketRepository.save(ticket);
 
-        saveHistory(ticket,"JOB_SCHEDULED");
+        saveHistory(ticket, wasScheduled ? "JOB_SCHEDULED_UPDATED" : "JOB_SCHEDULED");
         evictIssuePageCache();
     }
 
@@ -405,20 +470,15 @@ public class IssueTicketServiceImpl implements IssueTicketService {
     }
 
     @Override
-    @Cacheable(value = "issueImages", key = "#issueId")
     public List<IssueImageDto> getIssueImages(UUID issueId) {
         List<IssueImage> images = issueImageRepository.findByIssueTicketId(issueId);
         if (images == null || images.isEmpty()) {
             return List.of();
         }
 
-        List<IssueImageDto> imageDto = new ArrayList<>();
-        images.forEach(image ->{
-            String url = s3.getImageUrl(image.getKey());
-            imageDto.add(new IssueImageDto(image.getId(),url,image.getCreatedAt()));
-        });
-
-        return imageDto;
+        return images.parallelStream()
+                .map(image -> new IssueImageDto(image.getId(), s3.getImageUrl(image.getKey()), image.getCreatedAt()))
+                .toList();
     }
 
     @Override
@@ -613,15 +673,78 @@ public class IssueTicketServiceImpl implements IssueTicketService {
     }
 
     private List<IssueTicketDto> toIssueTicketDtos(List<IssueTicket> tickets) {
-        java.util.Map<UUID, UserResponse> userCache = new java.util.HashMap<>();
+        if (tickets.isEmpty()) return List.of();
+        List<UUID> ticketIds = tickets.stream().map(IssueTicket::getId).toList();
+
+        java.util.Map<UUID, List<IssueImageDto>> imagesByTicket = getIssueImagesBatch(ticketIds);
+        java.util.Map<UUID, IssueQuote> latestQuoteByTicket = getLatestQuotesBatch(ticketIds);
+        java.util.Map<UUID, UserResponse> userCache = preloadUserCache(tickets);
+
         return tickets.stream()
-                .map(ticket -> toIssueTicketDto(ticket, userCache, getIssueImages(ticket.getId())))
+                .map(ticket -> toIssueTicketDto(ticket, userCache,
+                        imagesByTicket.getOrDefault(ticket.getId(), List.of()),
+                        latestQuoteByTicket.get(ticket.getId())))
                 .toList();
     }
 
-    private IssueTicketDto toIssueTicketDto(IssueTicket ticket, java.util.Map<UUID, UserResponse> userCache, List<IssueImageDto> images) {
-        UserResponse tenant = resolveUser(ticket.getTenantId(), userCache);
-        UserResponse staff = resolveUser(ticket.getAssignedStaffId(), userCache);
+    private java.util.Map<UUID, IssueQuote> getLatestQuotesBatch(List<UUID> ticketIds) {
+        if (ticketIds == null || ticketIds.isEmpty()) return java.util.Map.of();
+        List<IssueQuote> all = issueQuoteRepository.findByIssueTicketIdInOrderByCreatedAtDesc(ticketIds);
+        java.util.Map<UUID, IssueQuote> latest = new java.util.HashMap<>();
+        for (IssueQuote q : all) {
+            UUID tid = q.getIssueTicket() != null ? q.getIssueTicket().getId() : null;
+            if (tid == null) continue;
+            latest.computeIfAbsent(tid, k -> q);
+        }
+        return latest;
+    }
+
+    private java.util.Map<UUID, UserResponse> preloadUserCache(List<IssueTicket> tickets) {
+        java.util.Set<UUID> uniqueIds = tickets.stream()
+                .flatMap(t -> java.util.stream.Stream.of(t.getTenantId(), t.getAssignedStaffId()))
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        if (uniqueIds.isEmpty()) return new java.util.concurrent.ConcurrentHashMap<>();
+        return uniqueIds.parallelStream()
+                .map(id -> {
+                    try { return java.util.Map.entry(id, userClientsGrpc.getUser(id.toString())); }
+                    catch (Exception e) { return null; }
+                })
+                .filter(java.util.Objects::nonNull)
+                .filter(e -> e.getValue() != null)
+                .collect(java.util.stream.Collectors.toConcurrentMap(
+                        java.util.Map.Entry::getKey,
+                        java.util.Map.Entry::getValue));
+    }
+
+    private java.util.Map<UUID, List<IssueImageDto>> getIssueImagesBatch(List<UUID> ticketIds) {
+        if (ticketIds == null || ticketIds.isEmpty()) return java.util.Map.of();
+        List<IssueImage> all = issueImageRepository.findByIssueTicketIdIn(ticketIds);
+        if (all.isEmpty()) return java.util.Map.of();
+
+        java.util.Map<UUID, String> urlByImageId = all.parallelStream()
+                .collect(java.util.stream.Collectors.toConcurrentMap(
+                        IssueImage::getId,
+                        img -> s3.getImageUrl(img.getKey())));
+
+        java.util.Map<UUID, List<IssueImageDto>> grouped = new java.util.HashMap<>();
+        for (IssueImage img : all) {
+            UUID tid = img.getIssueTicket() != null ? img.getIssueTicket().getId() : null;
+            if (tid == null) continue;
+            grouped.computeIfAbsent(tid, k -> new java.util.ArrayList<>())
+                    .add(new IssueImageDto(img.getId(), urlByImageId.get(img.getId()), img.getCreatedAt()));
+        }
+        return grouped;
+    }
+
+    private IssueTicketDto toIssueTicketDto(IssueTicket ticket,
+                                            java.util.Map<UUID, UserResponse> userCache,
+                                            List<IssueImageDto> images,
+                                            IssueQuote latestQuote) {
+        UUID tenantId = ticket.getTenantId();
+        UUID staffId = ticket.getAssignedStaffId();
+        UserResponse tenant = tenantId != null ? userCache.get(tenantId) : null;
+        UserResponse staff = staffId != null ? userCache.get(staffId) : null;
 
         return new IssueTicketDto(
                 ticket.getId(),
@@ -645,19 +768,8 @@ public class IssueTicketServiceImpl implements IssueTicketService {
                 null,
                 null,
                 null,
-                resolveLatestQuote(ticket)
+                latestQuote != null ? issueMapper.quote(latestQuote) : null
         );
-    }
-
-    private IssueQuoteDto resolveLatestQuote(IssueTicket ticket) {
-        if (ticket == null || ticket.getQuotes() == null || ticket.getQuotes().isEmpty()) {
-            return null;
-        }
-        return ticket.getQuotes().stream()
-                .filter(q -> q != null && q.getCreatedAt() != null)
-                .max(Comparator.comparing(IssueQuote::getCreatedAt))
-                .map(issueMapper::quote)
-                .orElse(null);
     }
 
     private UserResponse resolveUser(UUID userId, java.util.Map<UUID, UserResponse> userCache) {

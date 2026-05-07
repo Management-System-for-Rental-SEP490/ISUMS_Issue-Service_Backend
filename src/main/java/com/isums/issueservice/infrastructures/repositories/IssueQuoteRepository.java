@@ -18,4 +18,5 @@ public interface IssueQuoteRepository extends JpaRepository<IssueQuote, UUID> {
     @EntityGraph(attributePaths = {"items", "items.bannerVersion", "items.bannerVersion.banner", "issueTicket"})
     List<IssueQuote> findByIssueTicketIdOrderByCreatedAtDesc(UUID ticketId);
 
+    List<IssueQuote> findByIssueTicketIdInOrderByCreatedAtDesc(List<UUID> ticketIds);
 }

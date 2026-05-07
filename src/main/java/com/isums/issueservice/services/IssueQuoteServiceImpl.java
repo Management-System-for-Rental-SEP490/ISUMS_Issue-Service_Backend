@@ -8,6 +8,7 @@ import com.isums.issueservice.domains.enums.QuoteStatus;
 import com.isums.issueservice.domains.events.IssueQuoteSubmittedEvent;
 import com.isums.issueservice.domains.events.QuoteInvoiceCreateEvent;
 import com.isums.issueservice.infrastructures.abstracts.IssueQuoteService;
+import com.isums.issueservice.infrastructures.abstracts.IssueTicketService;
 import com.isums.issueservice.infrastructures.grpcs.UserClientsGrpc;
 import com.isums.issueservice.infrastructures.mappers.IssueMapper;
 import com.isums.issueservice.infrastructures.repositories.*;
@@ -39,6 +40,7 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
     private final KafkaTemplate<String, Object> kafka;
     private final CachedPageService cachedPageService;
     private final TranslationAutoFillService translationAutoFillService;
+    private final IssueTicketService issueTicketService;
 
     private static final String PAGE_NS = "issues";
 
@@ -218,8 +220,14 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
                     if (newStatus == QuoteStatus.APPROVED) {
                         quote.setStatus(QuoteStatus.APPROVED);
                         saveHistory(ticket, userId, "MANAGER_APPROVED_QUOTE");
-                        ticket.setStatus(IssueStatus.IN_PROGRESS);
-                        shouldCreateInvoice = true;
+                        if (Boolean.TRUE.equals(quote.getIsTenantFault())) {
+                            ticket.setStatus(IssueStatus.IN_PROGRESS);
+                            shouldCreateInvoice = true;
+                        } else {
+                            ticket.setStatus(IssueStatus.DONE);
+                            issueTicketService.markSlotDone(ticket);
+                            saveHistory(ticket, userId, "ISSUE_COMPLETED");
+                        }
                     } else if (newStatus == QuoteStatus.REJECTED) {
                         quote.setStatus(QuoteStatus.REJECTED);
                         ticket.setStatus(IssueStatus.IN_PROGRESS);
