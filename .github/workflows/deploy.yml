@@ -3,16 +3,11 @@ name: Deploy
 on:
   push:
     branches: [ main ]
-    paths-ignore:
-      - '.github/workflows/**'
-      - 'docs/**'
-      - 'README.md'
-  workflow_dispatch:
 
 permissions:
   id-token: write
   contents: read
-  packages: read
+  packages: write
 
 jobs:
   deploy:
@@ -20,6 +15,5 @@ jobs:
     with:
       service_name: issue-service
       xmx: 512m
-      ecr_keep_tagged: 8
     secrets:
       GH_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
