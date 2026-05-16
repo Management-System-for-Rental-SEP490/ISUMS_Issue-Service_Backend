@@ -155,10 +155,40 @@ public class IssueTicketServiceImpl implements IssueTicketService {
         try{
             UserResponse user = userClientsGrpc.getUserIdAndRoleByKeyCloakId(staffId);
             List<IssueTicket> tickets = issueTicketRepository.findByAssignedStaffIdOrderByCreatedAtDesc(UUID.fromString(user.getId()));
-            return toIssueTicketDtos(tickets);
+            return toLightIssueTicketDtos(tickets);
         } catch (Exception ex) {
             throw new RuntimeException("Can't get ticket by staff " + ex.getMessage());
         }
+    }
+
+    private List<IssueTicketDto> toLightIssueTicketDtos(List<IssueTicket> tickets) {
+        if (tickets.isEmpty()) return List.of();
+        return tickets.stream()
+                .map(ticket -> new IssueTicketDto(
+                        ticket.getId(),
+                        ticket.getTenantId(),
+                        null,
+                        ticket.getHouseId(),
+                        ticket.getAssetId(),
+                        ticket.getAssignedStaffId(),
+                        null,
+                        null,
+                        ticket.getSlotId(),
+                        ticket.getStartTime(),
+                        ticket.getEndTime(),
+                        ticket.getType(),
+                        ticket.getStatus(),
+                        resolveLocalized(ticket.getTitle(), ticket.getTitleTranslations()),
+                        resolveLocalized(ticket.getDescription(), ticket.getDescriptionTranslations()),
+                        ticket.getCreatedAt(),
+                        List.of(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null
+                ))
+                .toList();
     }
 
     @Override
