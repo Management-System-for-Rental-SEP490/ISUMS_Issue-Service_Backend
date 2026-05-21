@@ -216,17 +216,20 @@ public class IssueTicketServiceImpl implements IssueTicketService {
            IssueTicket ticket = issueTicketRepository.findById(id)
                    .orElseThrow(() -> new RuntimeException("Ticket not found"));
 
+           org.springframework.security.core.context.SecurityContext callerCtx =
+                   org.springframework.security.core.context.SecurityContextHolder.getContext();
+
            java.util.Map<UUID, UserResponse> userCache = new java.util.concurrent.ConcurrentHashMap<>();
            java.util.concurrent.CompletableFuture<UserResponse> staffFut = java.util.concurrent.CompletableFuture
-                   .supplyAsync(() -> resolveUser(ticket.getAssignedStaffId(), userCache));
+                   .supplyAsync(withContext(callerCtx, () -> resolveUser(ticket.getAssignedStaffId(), userCache)));
            java.util.concurrent.CompletableFuture<UserResponse> tenantFut = java.util.concurrent.CompletableFuture
-                   .supplyAsync(() -> resolveUser(ticket.getTenantId(), userCache));
+                   .supplyAsync(withContext(callerCtx, () -> resolveUser(ticket.getTenantId(), userCache)));
            java.util.concurrent.CompletableFuture<HouseResponse> houseFut = java.util.concurrent.CompletableFuture
-                   .supplyAsync(() -> resolveHouse(ticket.getHouseId()));
+                   .supplyAsync(withContext(callerCtx, () -> resolveHouse(ticket.getHouseId())));
            java.util.concurrent.CompletableFuture<AssetItemDto> assetFut = java.util.concurrent.CompletableFuture
-                   .supplyAsync(() -> resolveAsset(ticket.getHouseId(), ticket.getAssetId()));
+                   .supplyAsync(withContext(callerCtx, () -> resolveAsset(ticket.getHouseId(), ticket.getAssetId())));
            java.util.concurrent.CompletableFuture<List<IssueImageDto>> imagesFut = java.util.concurrent.CompletableFuture
-                   .supplyAsync(() -> getIssueImages(ticket.getId()));
+                   .supplyAsync(withContext(callerCtx, () -> getIssueImages(ticket.getId())));
 
            java.util.concurrent.CompletableFuture
                    .allOf(staffFut, tenantFut, houseFut, assetFut, imagesFut)
@@ -862,6 +865,21 @@ public class IssueTicketServiceImpl implements IssueTicketService {
         } catch (Exception ex) {
             return null;
         }
+    }
+
+    private <T> java.util.function.Supplier<T> withContext(
+            org.springframework.security.core.context.SecurityContext callerCtx,
+            java.util.function.Supplier<T> task) {
+        return () -> {
+            org.springframework.security.core.context.SecurityContext previous =
+                    org.springframework.security.core.context.SecurityContextHolder.getContext();
+            org.springframework.security.core.context.SecurityContextHolder.setContext(callerCtx);
+            try {
+                return task.get();
+            } finally {
+                org.springframework.security.core.context.SecurityContextHolder.setContext(previous);
+            }
+        };
     }
 
     private AssetItemDto resolveAsset(UUID houseId, UUID assetId) {
