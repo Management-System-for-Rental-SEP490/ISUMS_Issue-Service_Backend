@@ -865,16 +865,27 @@ public class IssueTicketServiceImpl implements IssueTicketService {
     }
 
     private AssetItemDto resolveAsset(UUID houseId, UUID assetId) {
-        if (houseId == null || assetId == null) {
+        if (assetId == null) {
             return null;
         }
         try {
-            return assetClientsGrpc.getAssetItemsByHouseId(houseId).stream()
-                    .filter(asset -> assetId.toString().equals(asset.getId()))
-                    .findFirst()
-                    .orElse(null);
-        } catch (Exception ex) {
-            return null;
+            return assetClientsGrpc.getAssetById(assetId);
+        } catch (Exception primary) {
+            log.warn("[Issue] getAssetById failed assetId={}: {} — fallback to by-house scan",
+                    assetId, primary.getMessage());
+            if (houseId == null) {
+                return null;
+            }
+            try {
+                return assetClientsGrpc.getAssetItemsByHouseId(houseId).stream()
+                        .filter(asset -> assetId.toString().equals(asset.getId()))
+                        .findFirst()
+                        .orElse(null);
+            } catch (Exception fallback) {
+                log.warn("[Issue] fallback by-house also failed assetId={} houseId={}: {}",
+                        assetId, houseId, fallback.getMessage());
+                return null;
+            }
         }
     }
 

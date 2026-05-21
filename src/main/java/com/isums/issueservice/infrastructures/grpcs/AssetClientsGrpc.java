@@ -2,6 +2,7 @@ package com.isums.issueservice.infrastructures.grpcs;
 
 import com.isums.assetservice.grpc.AssetItemDto;
 import com.isums.assetservice.grpc.AssetServiceGrpc;
+import com.isums.assetservice.grpc.GetAssetByIdRequest;
 import com.isums.assetservice.grpc.GetAssetItemsByHouseIdRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -19,5 +20,12 @@ public class AssetClientsGrpc {
                 .setHouseId(houseId.toString())
                 .build();
         return assetStub.getAssetItemsByHouseId(request).getAssetItemsList();
+    }
+
+    public AssetItemDto getAssetById(UUID assetId) {
+        GetAssetByIdRequest request = GetAssetByIdRequest.newBuilder()
+                .setAssetId(assetId.toString())
+                .build();
+        return assetStub.getAssetById(request);
     }
 }
