@@ -23,7 +23,9 @@ import com.isums.issueservice.domains.events.QuoteCashPaymentConfirmedEvent;
 import com.isums.issueservice.exceptions.NotFoundException;
 import com.isums.issueservice.infrastructures.grpcs.AssetClientsGrpc;
 import com.isums.issueservice.infrastructures.grpcs.HouseClientsGrpc;
+import com.isums.issueservice.infrastructures.grpcs.ScheduleClientsGrpc;
 import com.isums.issueservice.infrastructures.grpcs.UserClientsGrpc;
+import com.isums.scheduleservice.grpc.AutoAssignResponse;
 import com.isums.issueservice.infrastructures.abstracts.IssueTicketService;
 import com.isums.issueservice.infrastructures.kafka.JobEventProducer;
 import com.isums.issueservice.infrastructures.mappers.IssueMapper;
@@ -69,6 +71,7 @@ public class IssueTicketServiceImpl implements IssueTicketService {
     private final UserClientsGrpc userClientsGrpc;
     private final HouseClientsGrpc houseClientsGrpc;
     private final AssetClientsGrpc assetClientsGrpc;
+    private final ScheduleClientsGrpc scheduleClientsGrpc;
     private final S3ServiceImpl s3;
     private final IssueImageRepository issueImageRepository;
     private final IssueQuoteRepository issueQuoteRepository;
@@ -126,6 +129,22 @@ public class IssueTicketServiceImpl implements IssueTicketService {
                         .build();
 
                 jobEventProducer.publishJobCreated(event);
+
+                AutoAssignResponse resp = scheduleClientsGrpc.autoAssign(
+                        created.getId(), created.getTenantId(), created.getHouseId(), "ISSUE");
+                if (resp != null && "CREATED".equals(resp.getStatus())
+                        && resp.getSlotId() != null && !resp.getSlotId().isBlank()
+                        && resp.getStaffId() != null && !resp.getStaffId().isBlank()) {
+                    try {
+                        created.setSlotId(UUID.fromString(resp.getSlotId()));
+                        created.setAssignedStaffId(UUID.fromString(resp.getStaffId()));
+                        issueTicketRepository.save(created);
+                        log.info("[Issue] auto-assigned ticket={} slotId={} staffId={}",
+                                created.getId(), resp.getSlotId(), resp.getStaffId());
+                    } catch (IllegalArgumentException ex) {
+                        log.warn("[Issue] invalid UUID from schedule response: {}", ex.getMessage());
+                    }
+                }
             }
 
             return toIssueTicketDto(created, new java.util.HashMap<>(), List.of(), null);
