@@ -60,6 +60,8 @@ public class IssueQuoteServiceImpl implements IssueQuoteService {
 
             IssueQuote quote = IssueQuote.builder()
                     .issueTicket(ticket)
+                    .referenceId(ticket.getId())
+                    .referenceType("ISSUE")
                     .staffId(UUID.fromString(staffId))
                     .isTenantFault(req.isTenantFault())
                     .status(QuoteStatus.WAITING_MANAGER_APPROVAL)

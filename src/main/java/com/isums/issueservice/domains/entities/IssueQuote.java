@@ -17,7 +17,10 @@ import java.util.List;
 import java.util.UUID;
 
 @Entity
-@Table(name = "issue_quotes")
+@Table(name = "issue_quotes",
+        indexes = {
+                @Index(name = "idx_quote_reference", columnList = "reference_id,reference_type")
+        })
 @Data
 @Builder
 @NoArgsConstructor
@@ -32,6 +35,12 @@ public class IssueQuote {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ticket_id")
     private IssueTicket issueTicket;
+
+    @Column(name = "reference_id")
+    private UUID referenceId;
+
+    @Column(name = "reference_type", length = 32)
+    private String referenceType;
 
     private UUID staffId;
 

@@ -116,6 +116,69 @@ public class IssueGrpcService extends IssueServiceGrpc.IssueServiceImplBase {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public void getLatestQuoteByReference(GetQuoteByReferenceRequest request,
+                                          StreamObserver<QuoteFullResponse> responseObserver) {
+        try {
+            UUID referenceId;
+            try {
+                referenceId = UUID.fromString(request.getReferenceId());
+            } catch (IllegalArgumentException e) {
+                responseObserver.onError(Status.INVALID_ARGUMENT
+                        .withDescription("Invalid referenceId").asRuntimeException());
+                return;
+            }
+            String referenceType = request.getReferenceType();
+            if (referenceType == null || referenceType.isBlank()) {
+                responseObserver.onError(Status.INVALID_ARGUMENT
+                        .withDescription("referenceType is required").asRuntimeException());
+                return;
+            }
+
+            var opt = issueQuoteRepository
+                    .findFirstByReferenceIdAndReferenceTypeOrderByCreatedAtDesc(referenceId, referenceType);
+
+            if (opt.isEmpty()) {
+                responseObserver.onNext(QuoteFullResponse.newBuilder().setFound(false).build());
+                responseObserver.onCompleted();
+                return;
+            }
+
+            IssueQuote quote = opt.get();
+            QuoteFullResponse.Builder b = QuoteFullResponse.newBuilder()
+                    .setFound(true)
+                    .setId(quote.getId().toString())
+                    .setReferenceId(quote.getReferenceId() != null ? quote.getReferenceId().toString() : "")
+                    .setReferenceType(quote.getReferenceType() != null ? quote.getReferenceType() : "")
+                    .setStaffId(quote.getStaffId() != null ? quote.getStaffId().toString() : "")
+                    .setTotalPrice(quote.getTotalPrice() != null ? quote.getTotalPrice().toPlainString() : "0")
+                    .setIsTenantFault(Boolean.TRUE.equals(quote.getIsTenantFault()))
+                    .setStatus(quote.getStatus() != null ? quote.getStatus().name() : "")
+                    .setCreatedAtEpochMilli(quote.getCreatedAt() != null ? quote.getCreatedAt().toEpochMilli() : 0L);
+
+            if (quote.getItems() != null) {
+                for (QuoteItem it : quote.getItems()) {
+                    b.addItems(QuoteFullItem.newBuilder()
+                            .setId(it.getId() != null ? it.getId().toString() : "")
+                            .setItemName(it.getItemName() != null ? it.getItemName() : "")
+                            .setDescription(it.getDescription() != null ? it.getDescription() : "")
+                            .setPrice(it.getPrice() != null ? it.getPrice().toPlainString() : "0")
+                            .build());
+                }
+            }
+
+            responseObserver.onNext(b.build());
+            responseObserver.onCompleted();
+        } catch (io.grpc.StatusRuntimeException e) {
+            responseObserver.onError(e);
+        } catch (Exception e) {
+            log.error("[IssueGrpc] getLatestQuoteByReference failed referenceId={} type={}: {}",
+                    request.getReferenceId(), request.getReferenceType(), e.getMessage(), e);
+            responseObserver.onError(Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+        }
+    }
+
+    @Override
     public void getHouseByIssueId(GetIssueRequest request, StreamObserver<GetIssueResponse> responseObserver) {
         try {
             UUID id;
