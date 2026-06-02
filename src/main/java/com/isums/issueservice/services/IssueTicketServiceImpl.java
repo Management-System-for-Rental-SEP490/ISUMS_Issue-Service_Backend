@@ -547,12 +547,21 @@ public class IssueTicketServiceImpl implements IssueTicketService {
         IssueTicket ticket = issueTicketRepository.findById((event.getReferenceId()))
                 .orElseThrow(() -> new RuntimeException("Job not found"));
 
-        if (ticket.getSlotId() != null) {
-            return;
+        boolean changed = false;
+
+        if (event.getStaffId() != null && !Objects.equals(ticket.getAssignedStaffId(), event.getStaffId())) {
+            ticket.setAssignedStaffId(event.getStaffId());
+            changed = true;
         }
 
-        ticket.setAssignedStaffId(event.getStaffId());
-        ticket.setSlotId(event.getSlotId());
+        if (event.getSlotId() != null && !Objects.equals(ticket.getSlotId(), event.getSlotId())) {
+            ticket.setSlotId(event.getSlotId());
+            changed = true;
+        }
+
+        if (!changed) {
+            return;
+        }
 
         issueTicketRepository.save(ticket);
         saveHistory(ticket,"Assign_Slot");
@@ -564,13 +573,41 @@ public class IssueTicketServiceImpl implements IssueTicketService {
         IssueTicket ticket  = issueTicketRepository.findById(event.getReferenceId())
                 .orElseThrow(() -> new RuntimeException("Ticket not found"));
 
+        boolean changed = false;
+
         if(ticket.getSlotId() == null){
-            throw new RuntimeException("Ticket isn't assign in schedule yet");
+            if (event.getSlotId() != null) {
+                ticket.setSlotId(event.getSlotId());
+                changed = true;
+            } else {
+                throw new RuntimeException("Ticket isn't assign in schedule yet");
+            }
         }
 
-        ticket.setStatus(IssueStatus.WAITING_MANAGER_CONFIRM);
-        ticket.setStartTime(event.getStartTime());
-        ticket.setEndTime(event.getEndTime());
+        if (event.getStaffId() != null && !Objects.equals(ticket.getAssignedStaffId(), event.getStaffId())) {
+            ticket.setAssignedStaffId(event.getStaffId());
+            changed = true;
+        }
+        if (event.getSlotId() != null && !Objects.equals(ticket.getSlotId(), event.getSlotId())) {
+            ticket.setSlotId(event.getSlotId());
+            changed = true;
+        }
+        if (ticket.getStatus() != IssueStatus.WAITING_MANAGER_CONFIRM) {
+            ticket.setStatus(IssueStatus.WAITING_MANAGER_CONFIRM);
+            changed = true;
+        }
+        if (!Objects.equals(ticket.getStartTime(), event.getStartTime())) {
+            ticket.setStartTime(event.getStartTime());
+            changed = true;
+        }
+        if (!Objects.equals(ticket.getEndTime(), event.getEndTime())) {
+            ticket.setEndTime(event.getEndTime());
+            changed = true;
+        }
+
+        if (!changed) {
+            return;
+        }
 
         issueTicketRepository.save(ticket);
         saveHistory(ticket,"WAITING_MANAGER_CONFIRM");

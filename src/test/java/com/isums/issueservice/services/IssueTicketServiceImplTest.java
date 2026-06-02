@@ -600,6 +600,36 @@ class IssueTicketServiceImplTest {
             assertThat(t.getStartTime()).isNotNull();
             verify(cachedPageService).evictAll("issues");
         }
+
+        @Test
+        @DisplayName("repairs assignment when waiting-confirm event arrives before assigned event")
+        void repairsMissingAssignmentFromEvent() {
+            IssueTicket t = ticket(IssueStatus.CREATED, IssueType.REPAIR);
+            UUID staffId = UUID.randomUUID();
+            UUID slotId = UUID.randomUUID();
+            LocalDateTime start = LocalDateTime.now();
+            LocalDateTime end = start.plusHours(1);
+            when(ticketRepo.findById(ticketId)).thenReturn(Optional.of(t));
+
+            JobEvent event = JobEvent.builder()
+                    .referenceId(ticketId)
+                    .staffId(staffId)
+                    .slotId(slotId)
+                    .startTime(start)
+                    .endTime(end)
+                    .build();
+
+            service.markConfirmSlot(event);
+
+            assertThat(t.getStatus()).isEqualTo(IssueStatus.WAITING_MANAGER_CONFIRM);
+            assertThat(t.getAssignedStaffId()).isEqualTo(staffId);
+            assertThat(t.getSlotId()).isEqualTo(slotId);
+            assertThat(t.getStartTime()).isEqualTo(start);
+            assertThat(t.getEndTime()).isEqualTo(end);
+            verify(ticketRepo).save(t);
+            verify(historyRepo).save(any(IssueHistory.class));
+            verify(cachedPageService).evictAll("issues");
+        }
     }
 
     @Nested

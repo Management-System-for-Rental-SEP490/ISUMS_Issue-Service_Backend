@@ -11,34 +11,42 @@ public class KafkaTopicConfig {
 
     @Bean
     public NewTopic issueQuoteSubmittedTopic() {
-        return TopicBuilder.name("issue.quote.submitted")
-                .partitions(1)
-                .replicas(1)
-                .build();
+        return singlePartitionTopic("issue.quote.submitted");
+    }
+
+    @Bean
+    public NewTopic issueQuoteSubmittedDltTopic() {
+        return singlePartitionTopic("issue.quote.submitted.DLT");
     }
 
     @Bean
     public NewTopic quoteInvoiceCreateTopic() {
-        return TopicBuilder.name("quote-invoice-create")
-                .partitions(1)
-                .replicas(1)
-                .build();
+        return singlePartitionTopic("quote-invoice-create");
+    }
+
+    @Bean
+    public NewTopic quoteInvoiceCreateDltTopic() {
+        return singlePartitionTopic("quote-invoice-create.DLT");
     }
 
     @Bean
     public NewTopic quotePaymentCompletedTopic() {
-        return TopicBuilder.name("quote-payment-completed")
-                .partitions(1)
-                .replicas(1)
-                .build();
+        return singlePartitionTopic("quote-payment-completed");
+    }
+
+    @Bean
+    public NewTopic quotePaymentCompletedDltTopic() {
+        return singlePartitionTopic("quote-payment-completed.DLT");
     }
 
     @Bean
     public NewTopic quoteCashPaymentConfirmedTopic() {
-        return TopicBuilder.name("quote-cash-payment-confirmed")
-                .partitions(1)
-                .replicas(1)
-                .build();
+        return singlePartitionTopic("quote-cash-payment-confirmed");
+    }
+
+    @Bean
+    public NewTopic quoteCashPaymentConfirmedDltTopic() {
+        return singlePartitionTopic("quote-cash-payment-confirmed.DLT");
     }
 
     @Bean
@@ -47,8 +55,18 @@ public class KafkaTopicConfig {
     }
 
     @Bean
+    public NewTopic jobCreatedDltTopic() {
+        return jobTopic("job.created.DLT");
+    }
+
+    @Bean
     public NewTopic jobScheduledTopic() {
         return jobTopic("job.scheduled");
+    }
+
+    @Bean
+    public NewTopic jobScheduledDltTopic() {
+        return jobTopic("job.scheduled.DLT");
     }
 
     @Bean
@@ -57,8 +75,18 @@ public class KafkaTopicConfig {
     }
 
     @Bean
+    public NewTopic jobRescheduledDltTopic() {
+        return jobTopic("job.rescheduled.DLT");
+    }
+
+    @Bean
     public NewTopic jobNeedRescheduleTopic() {
         return jobTopic("job.need-reschedule");
+    }
+
+    @Bean
+    public NewTopic jobNeedRescheduleDltTopic() {
+        return jobTopic("job.need-reschedule.DLT");
     }
 
     @Bean
@@ -67,8 +95,18 @@ public class KafkaTopicConfig {
     }
 
     @Bean
+    public NewTopic jobAssignedDltTopic() {
+        return jobTopic("job.assigned.DLT");
+    }
+
+    @Bean
     public NewTopic jobWaitingConfirmTopic() {
         return jobTopic("job.waiting.confirm");
+    }
+
+    @Bean
+    public NewTopic jobWaitingConfirmDltTopic() {
+        return jobTopic("job.waiting.confirm.DLT");
     }
 
     @Bean
@@ -76,9 +114,21 @@ public class KafkaTopicConfig {
         return jobTopic("job.completed");
     }
 
+    @Bean
+    public NewTopic jobCompletedDltTopic() {
+        return jobTopic("job.completed.DLT");
+    }
+
     private NewTopic jobTopic(String name) {
         return TopicBuilder.name(name)
                 .partitions(JOB_TOPIC_PARTITIONS)
+                .replicas(1)
+                .build();
+    }
+
+    private NewTopic singlePartitionTopic(String name) {
+        return TopicBuilder.name(name)
+                .partitions(1)
                 .replicas(1)
                 .build();
     }

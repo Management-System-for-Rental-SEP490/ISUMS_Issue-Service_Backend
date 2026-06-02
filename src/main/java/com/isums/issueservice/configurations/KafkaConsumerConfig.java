@@ -11,10 +11,12 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.util.backoff.ExponentialBackOff;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
 
 @Configuration
+@Slf4j
 public class KafkaConsumerConfig {
 
     @Value("${spring.kafka.bootstrap-servers}")
@@ -50,10 +52,14 @@ public class KafkaConsumerConfig {
         );
 
         ExponentialBackOff backOff = new ExponentialBackOff(1_000L, 2.0);
-        backOff.setMaxInterval(60_000L);
-        backOff.setMaxAttempts(Long.MAX_VALUE);
+        backOff.setMaxInterval(10_000L);
+        backOff.setMaxAttempts(5);
 
         DefaultErrorHandler handler = new DefaultErrorHandler(recoverer, backOff);
+        handler.setRetryListeners((record, ex, deliveryAttempt) ->
+                log.warn("[Kafka] retry topic={} partition={} offset={} key={} attempt={} error={}",
+                        record.topic(), record.partition(), record.offset(), record.key(),
+                        deliveryAttempt, ex.getMessage()));
 
         handler.addNotRetryableExceptions(
                 com.fasterxml.jackson.core.JsonProcessingException.class,
