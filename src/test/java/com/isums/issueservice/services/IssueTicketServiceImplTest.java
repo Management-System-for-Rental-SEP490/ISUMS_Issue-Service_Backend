@@ -806,7 +806,7 @@ class IssueTicketServiceImplTest {
     class ConfirmCashPayment {
 
         @Test
-        @DisplayName("moves WAITING_CASH_PAYMENT -> WAITING_PAYMENT and emits payment-side cash confirm command")
+        @DisplayName("moves WAITING_CASH_PAYMENT -> DONE and emits payment-side cash confirm command")
         void happy() {
             IssueTicket t = ticket(IssueStatus.WAITING_CASH_PAYMENT, IssueType.REPAIR);
             t.setTenantId(tenantId);
@@ -822,7 +822,8 @@ class IssueTicketServiceImplTest {
 
             service.confirmCashPayment(ticketId);
 
-            assertThat(t.getStatus()).isEqualTo(IssueStatus.WAITING_PAYMENT);
+            assertThat(t.getStatus()).isEqualTo(IssueStatus.DONE);
+            verify(jobProducer).publishJobCompleted(any());
             ArgumentCaptor<Object> eventCap = ArgumentCaptor.forClass(Object.class);
             verify(kafka).send(eq("quote-cash-payment-confirmed"), eventCap.capture());
             com.isums.issueservice.domains.events.QuoteCashPaymentConfirmedEvent event =

@@ -410,8 +410,9 @@ public class IssueTicketServiceImpl implements IssueTicketService {
                 throw new RuntimeException("Quote is not approved");
             }
 
-            ticket.setStatus(IssueStatus.WAITING_PAYMENT);
+            ticket.setStatus(IssueStatus.DONE);
             IssueTicket saved = issueTicketRepository.save(ticket);
+            markSlotDone(saved);
 
             kafka.send("quote-cash-payment-confirmed", QuoteCashPaymentConfirmedEvent.builder()
                     .quoteId(latestQuote.getId())
@@ -423,6 +424,7 @@ public class IssueTicketServiceImpl implements IssueTicketService {
                     .build());
 
             saveHistory(saved, "CASH_PAYMENT_CONFIRMED");
+            saveHistory(saved, "PAYMENT_COMPLETED");
             evictIssuePageCache();
             return toIssueTicketDto(saved, new java.util.HashMap<>(), List.of(), null);
         } catch (Exception ex) {
